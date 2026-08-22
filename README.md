@@ -78,31 +78,29 @@ member/track.
 4. The host's Spotify account must be **Premium** (not Mini/Lite). Only the host
    ever logs in to Spotify, so the app can stay in development mode.
 
-### 2. Firebase (host push)
+### 2. Firebase (host push) — done
 
-The host needs an FCM token to be addressable by fcm-switch. Register an Android
-app in the `fcm-switch` Firebase project and generate `lib/firebase_options.dart`:
-
-```bash
-dart pub global activate flutterfire_cli
-flutterfire configure --project=fcm-switch --platforms=android
-```
-
-(The member web page uses the existing fcm-switch web app config in
-`web/index.html` and the service worker; nothing to do there.)
+The host needs an FCM token to be addressable by fcm-switch. The Android app
+`com.zond.spot` ("Spot host") is registered in the `fcm-switch` Firebase
+project and its options are in `lib/firebase_options.dart`. (If it is ever
+re-registered: `flutterfire configure --project=fcm-switch --platforms=android`.)
+The member web page reuses the fcm-switch web app config in `web/index.html`
+and the service worker.
 
 ### 3. Build & install the host app
 
 ```bash
-flutter pub get
-flutter run -d <your-phone> --dart-define=SPOTIFY_CLIENT_ID=<client id>
-# or an installable APK:
-flutter build apk --release --dart-define=SPOTIFY_CLIENT_ID=<client id>
-flutter install
+flutter build apk --release      # → build/app/outputs/flutter-apk/app-release.apk
+cp build/app/outputs/flutter-apk/app-release.apk ~/Drive/Spot.apk   # install from Drive
+# or straight to a connected phone:
+flutter run -d <your-phone>
 ```
 
-On the phone: Spotify app installed and logged in → open Spot → name → *Log in*
-(Spotify consent in a browser tab) → *Start party*. Android will ask for
+The Spotify client id is entered on the setup screen (stored on the phone), so
+the APK is generic; `--dart-define=SPOTIFY_CLIENT_ID=...` only sets a default.
+
+On the phone: Spotify app installed and logged in → open Spot → client id + name
+→ *Log in* (Spotify consent in a browser tab) → *Start party*. Android will ask for
 notification permission and to ignore battery optimisation: accept both, they
 keep the party alive with the screen off. First connect, the Spotify app shows
 an App Remote consent dialog.

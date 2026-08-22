@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-import '../config.dart';
 import '../models/party.dart';
 import '../models/track.dart';
 import '../services/identity.dart';
 import 'host_controller.dart';
 import 'host_player.dart';
+import 'host_settings.dart';
 import 'spotify_auth.dart';
 
 class HostApp extends StatelessWidget {
@@ -53,6 +53,7 @@ class _HostRootState extends State<_HostRoot> {
   Future<void> _init() async {
     await _identity.init();
     await _auth.load();
+    await HostSettings.load();
     final c = HostController(
       identity: _identity,
       auth: _auth,
@@ -95,6 +96,7 @@ class HostSetupScreen extends StatefulWidget {
 
 class _HostSetupScreenState extends State<HostSetupScreen> {
   late final TextEditingController _name;
+  late final TextEditingController _clientId;
   String? _loginError;
   bool _loggingIn = false;
 
@@ -104,11 +106,13 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
   void initState() {
     super.initState();
     _name = TextEditingController(text: c.identity.name ?? '');
+    _clientId = TextEditingController(text: HostSettings.clientId);
   }
 
   @override
   void dispose() {
     _name.dispose();
+    _clientId.dispose();
     super.dispose();
   }
 
@@ -118,6 +122,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
       _loginError = null;
     });
     try {
+      await HostSettings.setClientId(_clientId.text);
       await c.auth.login();
     } catch (e) {
       _loginError = '$e';
@@ -129,6 +134,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
     final name = _name.text.trim();
     if (name.isEmpty) return;
     await c.identity.setName(name);
+    await HostSettings.setClientId(_clientId.text);
     await c.start();
   }
 
@@ -136,7 +142,7 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
   Widget build(BuildContext context) {
     final auth = c.auth;
     final starting = c.phase == HostPhase.starting;
-    final hasClientId = Config.spotifyClientId.isNotEmpty;
+    final hasClientId = _clientId.text.trim().isNotEmpty;
     return Scaffold(
       appBar: AppBar(title: const Text('Spot — host a party')),
       body: ListenableBuilder(
@@ -144,16 +150,17 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
         builder: (context, _) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            if (!hasClientId)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text(
-                    'No Spotify client id compiled in. Build with\n'
-                    'flutter run --dart-define=SPOTIFY_CLIENT_ID=<id>',
-                  ),
-                ),
+            TextField(
+              controller: _clientId,
+              decoration: const InputDecoration(
+                labelText: 'Spotify client id (from the developer dashboard)',
+                border: OutlineInputBorder(),
               ),
+              autocorrect: false,
+              onChanged: (_) => setState(() {}),
+              onSubmitted: HostSettings.setClientId,
+            ),
+            const SizedBox(height: 16),
             TextField(
               controller: _name,
               decoration: const InputDecoration(

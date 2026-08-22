@@ -1,6 +1,7 @@
 import 'package:spotify_sdk/spotify_sdk.dart';
 
 import '../config.dart';
+import 'host_settings.dart';
 
 /// What the host controller needs from a Spotify player.
 abstract interface class HostPlayer {
@@ -23,7 +24,7 @@ class AppRemotePlayer implements HostPlayer {
       throw StateError('The Spotify app is not installed on this phone');
     }
     final ok = await SpotifySdk.connectToSpotifyRemote(
-      clientId: Config.spotifyClientId,
+      clientId: HostSettings.clientId,
       redirectUrl: Config.spotifyRedirectUri,
       playerName: 'Spot',
     );

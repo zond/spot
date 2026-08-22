@@ -10,8 +10,8 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 
 ## Build / deploy / push
 
-- Host: `flutter run -d <phone> --dart-define=SPOTIFY_CLIENT_ID=...`
-  (`flutter build apk --release --dart-define=...` + `flutter install` for an APK).
+- Host: `flutter build apk --release` and copy `app-release.apk` to `~/Drive/Spot.apk`
+  (the user's Google Drive mount; they install from there). `flutter run -d <phone>` for dev.
 - Member web: `./deploy-web.sh` builds and force-pushes `gh-pages` of
   `git@github.com:zond/spot.git`. Fix build errors rather than skipping.
 - Source: `git add` / `git commit` / `git push origin main`.
@@ -38,6 +38,7 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 - Every host→member message is a full personal snapshot (`MemberView`).
 - Fairness = least airtime first; airtime credited from actual playback
   position deltas; late joiners start at the party minimum.
-- Spotify client id is a `--dart-define` (`Config.spotifyClientId`), never committed.
-- `lib/firebase_options.dart` is a placeholder until `flutterfire configure
-  --project=fcm-switch --platforms=android` is run (host push needs it).
+- Spotify client id is entered in the app (`HostSettings`, SharedPreferences);
+  `--dart-define=SPOTIFY_CLIENT_ID` is only a default. Never commit one.
+- `lib/firebase_options.dart` holds the real fcm-switch Android app
+  (com.zond.spot, registered 2026-08-22) + web options.

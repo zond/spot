@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
+import 'host_settings.dart';
 
 class SpotifyAuthException implements Exception {
   SpotifyAuthException(this.message);
@@ -42,9 +43,8 @@ class SpotifyAuth extends ChangeNotifier {
 
   /// Opens the Spotify consent page in a custom tab and exchanges the code.
   Future<void> login() async {
-    if (Config.spotifyClientId.isEmpty) {
-      throw SpotifyAuthException(
-          'No Spotify client id. Build with --dart-define=SPOTIFY_CLIENT_ID=...');
+    if (HostSettings.clientId.isEmpty) {
+      throw SpotifyAuthException('Enter your Spotify client id first');
     }
     final verifier = _randomString(64);
     final challenge = base64UrlEncode(
@@ -52,7 +52,7 @@ class SpotifyAuth extends ChangeNotifier {
     ).replaceAll('=', '');
     final state = _randomString(16);
     final url = Uri.https('accounts.spotify.com', '/authorize', {
-      'client_id': Config.spotifyClientId,
+      'client_id': HostSettings.clientId,
       'response_type': 'code',
       'redirect_uri': Config.spotifyRedirectUri,
       'code_challenge_method': 'S256',
@@ -77,7 +77,7 @@ class SpotifyAuth extends ChangeNotifier {
       'grant_type': 'authorization_code',
       'code': code,
       'redirect_uri': Config.spotifyRedirectUri,
-      'client_id': Config.spotifyClientId,
+      'client_id': HostSettings.clientId,
       'code_verifier': verifier,
     });
   }
@@ -102,7 +102,7 @@ class SpotifyAuth extends ChangeNotifier {
     await _tokenRequest({
       'grant_type': 'refresh_token',
       'refresh_token': r,
-      'client_id': Config.spotifyClientId,
+      'client_id': HostSettings.clientId,
     });
   }
 
