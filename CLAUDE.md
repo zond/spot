@@ -32,6 +32,10 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 
 ## Conventions / decisions
 
+- Release builds need `android/app/proguard-rules.pro` (`-keep class com.spotify.** { *; }`):
+  App Remote finds the Spotify app via reflection and R8 otherwise strips the
+  locator's constructor, so release APKs claim Spotify isn't installed.
+
 - fcm-switch is used as-is (no server changes): everyone registers with a real
   FCM token; members therefore need notification permission to join.
 - Delivery is at-least-once (push + inbox); every receiver de-dups on message `id`.
