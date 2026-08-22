@@ -129,15 +129,10 @@ class MemberController extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      await identity.setName(name);
+      // Ask for push first, straight from the tap, before any other awaits.
       final token = await push.requestToken();
-      if (token == null) {
-        throw StateError(
-            'Notifications must be allowed to join — the host reaches you '
-            'through push. ${push.error ?? ''}\n'
-            'On iPhone, first add this page to the Home Screen and open it '
-            'from there.');
-      }
+      if (token == null) throw StateError(_pushHelp());
+      await identity.setName(name);
       await switchClient.register(
           uuid: identity.uuid, token: token, secret: identity.secret);
       push.onMessage(_handleData);
@@ -148,10 +143,34 @@ class MemberController extends ChangeNotifier {
       unawaited(_drainInbox());
       phase = MemberPhase.joined;
     } catch (e) {
-      error = '$e';
+      error = e is StateError ? e.message : '$e';
       phase = MemberPhase.needName;
     }
     notifyListeners();
+  }
+
+  /// Why push is unavailable, and what to do about it, by permission state.
+  String _pushHelp() {
+    const why = 'The host reaches you through push notifications, so they '
+        'must be allowed for this page.';
+    switch (push.permission) {
+      case 'denied':
+        return '$why They are blocked right now. Android Chrome: tap the icon '
+            'left of the address bar → Permissions → Notifications → Allow '
+            '(or ⋮ → Settings → Site settings → Notifications), and check that '
+            'Chrome itself may show notifications in Android settings. Then '
+            'tap Join again.';
+      case 'unsupported':
+        return '$why This browser has no web push. On iPhone/iPad: add this '
+            'page to the Home Screen (Share → Add to Home Screen) and open it '
+            'from there, then Join.';
+      case 'default':
+        return '$why The browser did not show the question — look for a '
+            'crossed-out bell in the address bar and allow notifications '
+            'there, then tap Join again. ${push.error ?? ''}';
+      default:
+        return '$why ${push.error ?? 'Could not get a push token.'}';
+    }
   }
 
   Future<void> leave() async {
