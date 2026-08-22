@@ -380,9 +380,8 @@ class _PartyScreenState extends State<PartyScreen> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               buildDefaultDragHandles: false,
-              onReorder: (oldIndex, newIndex) {
+              onReorderItem: (oldIndex, newIndex) {
                 final ids = v.myQueue.map((q) => q.id).toList();
-                if (newIndex > oldIndex) newIndex--;
                 ids.insert(newIndex, ids.removeAt(oldIndex));
                 c.reorder(ids);
               },
