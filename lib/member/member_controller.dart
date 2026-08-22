@@ -155,19 +155,22 @@ class MemberController extends ChangeNotifier {
         'must be allowed for this page.';
     switch (push.permission) {
       case 'denied':
-        return '$why They are blocked right now. Android Chrome: tap the icon '
-            'left of the address bar → Permissions → Notifications → Allow '
-            '(or ⋮ → Settings → Site settings → Notifications), and check that '
-            'Chrome itself may show notifications in Android settings. Then '
-            'tap Join again.';
+        return '$why They are blocked right now. If you opened Spot from the '
+            'Home Screen: Android Settings → Apps → Spot → Notifications → '
+            'Allow. In a Chrome tab: tap the icon left of the address bar → '
+            'Permissions → Notifications → Allow (or ⋮ → Settings → Site '
+            'settings → Notifications, and make sure "Sites can ask" is on). '
+            'Also check Android Settings → Apps → Chrome → Notifications. '
+            'Then tap Join again.';
       case 'unsupported':
         return '$why This browser has no web push. On iPhone/iPad: add this '
             'page to the Home Screen (Share → Add to Home Screen) and open it '
             'from there, then Join.';
       case 'default':
-        return '$why The browser did not show the question — look for a '
-            'crossed-out bell in the address bar and allow notifications '
-            'there, then tap Join again. ${push.error ?? ''}';
+        return '$why The browser did not show the question. In Chrome, look '
+            'for a crossed-out bell in the address bar, or check ⋮ → Settings → '
+            'Site settings → Notifications → "Sites can ask" is on. Then tap '
+            'Join again. ${push.error ?? ''}';
       default:
         return '$why ${push.error ?? 'Could not get a push token.'}';
     }

@@ -195,10 +195,12 @@ class _JoinScreenState extends State<JoinScreen> {
             label: Text(joining ? 'Joining…' : 'Join'),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Your browser will ask to allow notifications: that is how the '
-            'host sends you the queue and the search token.',
-            style: TextStyle(color: Colors.white60),
+            'host sends you the queue and the search token.\n'
+            'Notification permission right now: ${c.push.permission}'
+            '${c.push.error == null ? '' : ' (${c.push.error})'}',
+            style: const TextStyle(color: Colors.white60),
           ),
           if (c.error != null) ...[
             const SizedBox(height: 16),
