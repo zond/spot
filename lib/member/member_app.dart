@@ -283,6 +283,31 @@ class _PartyScreenState extends State<PartyScreen> {
     }
   }
 
+  Future<void> _rename() async {
+    final ctrl = TextEditingController(text: c.identity.name ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Your name'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (name != null && name.trim().isNotEmpty) await c.rename(name);
+  }
+
   Future<void> _add(Track t) async {
     try {
       await c.enqueue(t);
@@ -309,6 +334,10 @@ class _PartyScreenState extends State<PartyScreen> {
       appBar: AppBar(
         title: Text("${c.displayHostName}'s party"),
         actions: [
+          IconButton(
+              tooltip: 'Change my name',
+              onPressed: _rename,
+              icon: const Icon(Icons.edit)),
           IconButton(
               tooltip: 'Refresh',
               onPressed: c.requestState,
@@ -364,10 +393,23 @@ class _PartyScreenState extends State<PartyScreen> {
                 onPressed: () => setState(() => _results = const []),
                 child: const Text('Clear results')),
           const SizedBox(height: 16),
-          Text(
-            'My queue'
-            '${v == null ? '' : ' · airtime ${formatMs(_myAirtime(v))}'}',
-            style: theme.textTheme.titleMedium,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'My queue (${c.identity.name ?? 'me'})'
+                  '${v == null ? '' : ' · airtime ${formatMs(_myAirtime(v))}'}',
+                  style: theme.textTheme.titleMedium,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Change my name',
+                visualDensity: VisualDensity.compact,
+                onPressed: _rename,
+                icon: const Icon(Icons.edit, size: 18),
+              ),
+            ],
           ),
           if (v == null || v.myQueue.isEmpty)
             const Padding(

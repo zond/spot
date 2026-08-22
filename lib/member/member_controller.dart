@@ -154,6 +154,16 @@ class MemberController extends ChangeNotifier {
   /// token).
   Future<void> requestState() => _sendJoin();
 
+  /// Changes the display name; a join message carries the new name to the
+  /// host, which tells everyone.
+  Future<void> rename(String name) async {
+    final n = name.trim();
+    if (n.isEmpty) return;
+    await identity.setName(n);
+    notifyListeners();
+    if (phase == MemberPhase.joined) await _sendJoin();
+  }
+
   Future<void> _sendJoin() => switchClient.send(
         hostUuid!,
         Message(
