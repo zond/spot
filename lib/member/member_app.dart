@@ -344,7 +344,7 @@ class _PartyScreenState extends State<PartyScreen> {
           const SizedBox(height: 16),
           Text(
             'My queue'
-            '${v == null ? '' : ' · airtime ${formatMs(v.myPlayedMs)}'}',
+            '${v == null ? '' : ' · airtime ${formatMs(_myAirtime(v))}'}',
             style: theme.textTheme.titleMedium,
           ),
           if (v == null || v.myQueue.isEmpty)
@@ -400,6 +400,15 @@ class _PartyScreenState extends State<PartyScreen> {
         ],
       ),
     );
+  }
+
+  /// Airtime including the not-yet-credited part of a track of mine that is
+  /// playing right now.
+  int _myAirtime(MemberView v) {
+    final n = v.now;
+    if (n == null || n.memberUuid != c.identity.uuid) return v.myPlayedMs;
+    final live = n.positionAt(DateTime.now().millisecondsSinceEpoch) - n.positionMs;
+    return v.myPlayedMs + (live > 0 ? live : 0);
   }
 
   Widget _art(Track t) => t.imageUrl == null

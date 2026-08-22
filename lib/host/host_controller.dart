@@ -75,6 +75,7 @@ class HostController extends ChangeNotifier {
   StreamSubscription<PlayerState>? _stateSub;
   StreamSubscription<dynamic>? _connSub;
   bool _polling = false;
+  int _pollFailures = 0;
   final _seen = SeenIds();
 
   String get joinUrl => Uri.parse(Config.webBaseUrl).replace(queryParameters: {
@@ -91,6 +92,13 @@ class HostController extends ChangeNotifier {
         );
 
   int get durationMs => _durationMs;
+
+  /// Airtime including the part of the current track not yet credited (credit
+  /// happens on Spotify state events, which are sparse).
+  int airtimeOf(Member m) => m.playedMs +
+      (currentMember?.uuid == m.uuid && _sawPlaying
+          ? max(0, positionMs - _lastPos)
+          : 0);
 
   // ------------------------------------------------------------------ lifecycle
 
@@ -443,9 +451,17 @@ class HostController extends ChangeNotifier {
         final m = Message.fromData(d);
         if (m != null) _handle(m);
       }
+      if (_pollFailures >= 3 && (lastError?.startsWith('Inbox:') ?? false)) {
+        lastError = null;
+        notifyListeners();
+      }
+      _pollFailures = 0;
     } catch (e) {
-      lastError = 'Inbox: $e';
-      notifyListeners();
+      // Phones flap between networks; only complain when it keeps failing.
+      if (++_pollFailures >= 3) {
+        lastError = 'Inbox: $e';
+        notifyListeners();
+      }
     } finally {
       _polling = false;
     }

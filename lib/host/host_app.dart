@@ -498,7 +498,7 @@ class _MemberTile extends StatelessWidget {
           color: isPlaying ? Colors.green : null),
       title: Text(member.name),
       subtitle: Text(
-          'airtime ${formatMs(member.playedMs)} · ${member.queue.length} queued'),
+          'airtime ${formatMs(controller.airtimeOf(member))} · ${member.queue.length} queued'),
       children: [
         if (member.queue.isEmpty)
           const ListTile(

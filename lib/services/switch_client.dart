@@ -21,9 +21,11 @@ class SwitchException implements Exception {
 /// on message id.
 class SwitchClient {
   SwitchClient({http.Client? client, this.base = Config.functionsBase})
-      : _http = client ?? http.Client();
+      : _http = client ?? http.Client(),
+        _ownsClient = client == null;
 
-  final http.Client _http;
+  http.Client _http;
+  final bool _ownsClient;
   final String base;
 
   Future<void> register({
@@ -65,11 +67,24 @@ class SwitchClient {
     return messages.cast<Map<String, dynamic>>();
   }
 
-  Future<http.Response> _post(String fn, Object body) => _http
-      .post(
-        Uri.parse('$base/$fn'),
-        headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      )
-      .timeout(const Duration(seconds: 20));
+  Future<http.Response> _post(String fn, Object body) async {
+    try {
+      return await _http
+          .post(
+            Uri.parse('$base/$fn'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 20));
+    } on http.ClientException {
+      // Phones hop between Wi-Fi and mobile data; a pooled keep-alive socket
+      // then dies with "Software caused connection abort". Drop the pool so
+      // the next call opens a fresh connection.
+      if (_ownsClient) {
+        _http.close();
+        _http = http.Client();
+      }
+      rethrow;
+    }
+  }
 }
