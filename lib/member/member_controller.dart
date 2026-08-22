@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:js_interop';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web/web.dart' as web;
@@ -60,6 +61,8 @@ class MemberController extends ChangeNotifier {
   String get displayHostName => view?.hostName ?? hostName ?? 'the host';
 
   Future<void> init() async {
+    unawaited(_checkVersion());
+    _watchVisibility();
     await identity.init();
     final prefs = await SharedPreferences.getInstance();
     final params = Uri.base.queryParameters;
@@ -196,18 +199,49 @@ class MemberController extends ChangeNotifier {
 
   /// Pushes that arrived while the tab was hidden went to the service worker
   /// (as a notification), not to the page: catch up when we become visible.
+  /// Also a good moment to notice a newer deployment (installed pages are
+  /// resumed, not reloaded, so they can run an old build for days).
   void _watchVisibility() {
     if (_watchingVisibility) return;
     _watchingVisibility = true;
     web.document.addEventListener(
       'visibilitychange',
       ((web.Event _) {
-        if (web.document.visibilityState == 'visible' &&
-            phase == MemberPhase.joined) {
-          unawaited(_drainInbox());
-        }
+        if (web.document.visibilityState != 'visible') return;
+        unawaited(_checkVersion());
+        if (phase == MemberPhase.joined) unawaited(_drainInbox());
       }).toJS,
     );
+  }
+
+  static const _versionKey = 'member_app_version';
+  DateTime _lastVersionCheck = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// deploy-web.sh writes version.txt next to the app; if it changed since
+  /// this page was loaded, reload so the service-worker picks up the new
+  /// build (same trick as analfapet).
+  Future<void> _checkVersion() async {
+    if (DateTime.now().difference(_lastVersionCheck) < const Duration(minutes: 1)) {
+      return;
+    }
+    _lastVersionCheck = DateTime.now();
+    try {
+      final baseHref =
+          web.document.querySelector('base')?.getAttribute('href') ?? '/';
+      final resp = await http
+          .get(Uri.parse(
+              '${baseHref}version.txt?t=${DateTime.now().millisecondsSinceEpoch}'))
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) return;
+      final server = resp.body.trim();
+      if (server.isEmpty) return;
+      final prefs = await SharedPreferences.getInstance();
+      final local = prefs.getString(_versionKey);
+      await prefs.setString(_versionKey, server);
+      if (local != null && local != server) web.window.location.reload();
+    } catch (_) {
+      // Offline or blocked: just keep running what we have.
+    }
   }
 
   /// Changes the display name; a join message carries the new name to the
