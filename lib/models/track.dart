@@ -15,6 +15,7 @@ class Track {
   final String? imageUrl;
 
   String get uri => 'spotify:track:$id';
+  String get spotifyUrl => 'https://open.spotify.com/track/$id';
 
   static String? idFromUri(String uri) =>
       uri.startsWith('spotify:track:') ? uri.substring('spotify:track:'.length) : null;

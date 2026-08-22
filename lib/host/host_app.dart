@@ -10,6 +10,7 @@ import '../config.dart';
 import '../models/party.dart';
 import '../models/track.dart';
 import '../services/identity.dart';
+import '../services/open_spotify.dart';
 import 'host_controller.dart';
 import 'host_player.dart';
 import 'host_settings.dart';
@@ -178,53 +179,71 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 auth.needsRelogin
                     ? Icons.warning_amber
                     : auth.isLoggedIn
-                        ? Icons.check_circle
-                        : Icons.music_note,
+                    ? Icons.check_circle
+                    : Icons.music_note,
                 color: auth.needsRelogin
                     ? Colors.orange
                     : auth.isLoggedIn
-                        ? Colors.green
-                        : null,
+                    ? Colors.green
+                    : null,
               ),
-              title: Text(auth.needsRelogin
-                  ? 'Log in again (new permissions needed)'
-                  : auth.isLoggedIn
-                      ? 'Logged in to Spotify'
-                      : 'Log in to Spotify (Premium)'),
+              title: Text(
+                auth.needsRelogin
+                    ? 'Log in again (new permissions needed)'
+                    : auth.isLoggedIn
+                    ? 'Logged in to Spotify'
+                    : 'Log in to Spotify (Premium)',
+              ),
               subtitle: _loginError != null
-                  ? Text(_loginError!,
-                      style: TextStyle(color: Theme.of(context).colorScheme.error))
+                  ? Text(
+                      _loginError!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    )
                   : const Text(
                       'The Spotify app on this phone does the playing; '
-                      'members search with your token.'),
+                      'members search with your token.',
+                    ),
               trailing: _loggingIn
                   ? const SizedBox(
-                      width: 24, height: 24, child: CircularProgressIndicator())
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(),
+                    )
                   : TextButton(
                       onPressed: !hasClientId
                           ? null
                           : auth.isLoggedIn
-                              ? auth.logout
-                              : _login,
+                          ? auth.logout
+                          : _login,
                       child: Text(auth.isLoggedIn ? 'Log out' : 'Log in'),
                     ),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed:
-                  hasClientId && auth.isLoggedIn && !auth.needsRelogin && !starting
-                      ? _start
-                      : null,
+                  hasClientId &&
+                      auth.isLoggedIn &&
+                      !auth.needsRelogin &&
+                      !starting
+                  ? _start
+                  : null,
               icon: starting
                   ? const SizedBox(
-                      width: 18, height: 18, child: CircularProgressIndicator())
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(),
+                    )
                   : const Icon(Icons.play_arrow),
               label: Text(starting ? c.status : 'Start party'),
             ),
             if (c.lastError != null) ...[
               const SizedBox(height: 16),
-              Text(c.lastError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              Text(
+                c.lastError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ],
             const SizedBox(height: 32),
             if (!c.party.isEmpty)
@@ -232,8 +251,9 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 onPressed: c.resetParty,
                 icon: const Icon(Icons.delete_outline),
                 label: Text(
-                    'Forget saved party (${c.party.members.length} queued, '
-                    '${c.party.listeners.length} known)'),
+                  'Forget saved party (${c.party.members.length} queued, '
+                  '${c.party.listeners.length} known)',
+                ),
               ),
             const SizedBox(height: 24),
             const Text(
@@ -280,11 +300,14 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
 
   /// Opens the member page in the browser so the host can join too.
   Future<void> _openJoinLink() async {
-    final ok = await launchUrl(Uri.parse(c.joinUrl),
-        mode: LaunchMode.externalApplication);
+    final ok = await launchUrl(
+      Uri.parse(c.joinUrl),
+      mode: LaunchMode.externalApplication,
+    );
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open a browser')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open a browser')));
     }
   }
 
@@ -294,15 +317,18 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('End the party?'),
         content: const Text(
-            'Playback stops and members lose contact. Queues and airtime are '
-            'kept for next time.'),
+          'Playback stops and members lose contact. Queues and airtime are '
+          'kept for next time.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Keep going')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep going'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('End party')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('End party'),
+          ),
         ],
       ),
     );
@@ -333,8 +359,10 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  const Text('Scan to join',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Scan to join',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 12),
                   InkWell(
                     onTap: _openJoinLink,
@@ -345,8 +373,10 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text('Tap the code or link to join from this phone too',
-                      style: TextStyle(fontSize: 11, color: Colors.white60)),
+                  const Text(
+                    'Tap the code or link to join from this phone too',
+                    style: TextStyle(fontSize: 11, color: Colors.white60),
+                  ),
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -354,12 +384,15 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                       Flexible(
                         child: InkWell(
                           onTap: _openJoinLink,
-                          child: Text(c.joinUrl,
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.lightGreenAccent,
-                                  decoration: TextDecoration.underline),
-                              overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            c.joinUrl,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.lightGreenAccent,
+                              decoration: TextDecoration.underline,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
                       IconButton(
@@ -368,7 +401,8 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                         onPressed: () {
                           Clipboard.setData(ClipboardData(text: c.joinUrl));
                           ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Link copied')));
+                            const SnackBar(content: Text('Link copied')),
+                          );
                         },
                       ),
                     ],
@@ -379,77 +413,94 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
           ),
           const SizedBox(height: 12),
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: now == null
-                  ? Text(c.status, style: theme.textTheme.titleMedium)
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            if (now.track.imageUrl != null)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 12),
-                                child: Image.network(now.track.imageUrl!,
-                                    width: 56, height: 56,
+            child: InkWell(
+              onTap: now == null ? null : () => openInSpotify(now.track),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: now == null
+                    ? Text(c.status, style: theme.textTheme.titleMedium)
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              if (now.track.imageUrl != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 12),
+                                  child: Image.network(
+                                    now.track.imageUrl!,
+                                    width: 56,
+                                    height: 56,
                                     errorBuilder: (_, _, _) =>
-                                        const SizedBox(width: 56, height: 56)),
-                              ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(now.track.name,
+                                        const SizedBox(width: 56, height: 56),
+                                  ),
+                                ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      now.track.name,
                                       style: theme.textTheme.titleMedium,
-                                      overflow: TextOverflow.ellipsis),
-                                  Text(now.track.artists,
-                                      overflow: TextOverflow.ellipsis),
-                                  Text('for ${c.currentMember?.name ?? '?'}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      now.track.artists,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      'for ${c.currentMember?.name ?? '?'}',
                                       style: const TextStyle(
-                                          color: Colors.white60)),
-                                ],
+                                        color: Colors.white60,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: c.durationMs > 0
-                              ? (c.positionMs / c.durationMs).clamp(0.0, 1.0)
-                              : null,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          LinearProgressIndicator(
+                            value: c.durationMs > 0
+                                ? (c.positionMs / c.durationMs).clamp(0.0, 1.0)
+                                : null,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
                             '${formatMs(c.positionMs)} / ${formatMs(c.durationMs)}'
                             '${c.paused ? '  (paused)' : ''}',
-                            style: const TextStyle(fontSize: 12)),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            IconButton(
-                              tooltip: c.paused ? 'Resume' : 'Pause',
-                              onPressed: c.paused ? c.resume : c.pause,
-                              icon: Icon(
-                                  c.paused ? Icons.play_arrow : Icons.pause),
-                            ),
-                            IconButton(
-                              tooltip: 'Skip',
-                              onPressed: c.skip,
-                              icon: const Icon(Icons.skip_next),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              IconButton(
+                                tooltip: c.paused ? 'Resume' : 'Pause',
+                                onPressed: c.paused ? c.resume : c.pause,
+                                icon: Icon(
+                                  c.paused ? Icons.play_arrow : Icons.pause,
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Skip',
+                                onPressed: c.skip,
+                                icon: const Icon(Icons.skip_next),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+              ),
             ),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              Icon(c.spotifyConnected ? Icons.link : Icons.link_off,
-                  size: 16,
-                  color: c.spotifyConnected ? Colors.green : Colors.orange),
+              Icon(
+                c.spotifyConnected ? Icons.link : Icons.link_off,
+                size: 16,
+                color: c.spotifyConnected ? Colors.green : Colors.orange,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -464,36 +515,47 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
             ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.warning_amber,
-                  color: theme.colorScheme.error, size: 18),
-              title: Text(c.lastError!,
-                  style: TextStyle(
-                      fontSize: 12, color: theme.colorScheme.error)),
+              leading: Icon(
+                Icons.warning_amber,
+                color: theme.colorScheme.error,
+                size: 18,
+              ),
+              title: Text(
+                c.lastError!,
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
+              ),
               trailing: IconButton(
-                  icon: const Icon(Icons.close, size: 16),
-                  onPressed: c.clearError),
+                icon: const Icon(Icons.close, size: 16),
+                onPressed: c.clearError,
+              ),
             ),
           const SizedBox(height: 16),
           Text('Members with songs queued', style: theme.textTheme.titleMedium),
           if (members.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('Nobody has queued anything yet.',
-                  style: TextStyle(color: Colors.white60)),
+              child: Text(
+                'Nobody has queued anything yet.',
+                style: TextStyle(color: Colors.white60),
+              ),
             ),
           for (final m in members) _MemberTile(member: m, controller: c),
           const SizedBox(height: 12),
-          Builder(builder: (context) {
-            final now = DateTime.now().millisecondsSinceEpoch;
-            final live = c.party.recipients(now, Config.listenerTimeout).toList();
-            return Text(
-              live.isEmpty
-                  ? 'Nobody is looking at the page right now.'
-                  : 'Listening now (${live.length}): '
-                      '${live.map((l) => l.name).join(', ')}',
-              style: const TextStyle(fontSize: 12, color: Colors.white60),
-            );
-          }),
+          Builder(
+            builder: (context) {
+              final now = DateTime.now().millisecondsSinceEpoch;
+              final live = c.party
+                  .recipients(now, Config.listenerTimeout)
+                  .toList();
+              return Text(
+                live.isEmpty
+                    ? 'Nobody is looking at the page right now.'
+                    : 'Listening now (${live.length}): '
+                          '${live.map((l) => l.name).join(', ')}',
+                style: const TextStyle(fontSize: 12, color: Colors.white60),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -509,33 +571,45 @@ class _MemberTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isPlaying = controller.currentMember?.uuid == member.uuid;
     return ExpansionTile(
-      leading: Icon(isPlaying ? Icons.volume_up : Icons.person,
-          color: isPlaying ? Colors.green : null),
+      leading: Icon(
+        isPlaying ? Icons.volume_up : Icons.person,
+        color: isPlaying ? Colors.green : null,
+      ),
       title: Text(member.name),
       subtitle: Text(
-          'airtime ${formatMs(controller.airtimeOf(member))} · ${member.queue.length} queued'),
+        'airtime ${formatMs(controller.airtimeOf(member))} · ${member.queue.length} queued',
+      ),
       children: [
         if (member.queue.isEmpty)
           const ListTile(
-              dense: true,
-              title: Text('Queue is empty',
-                  style: TextStyle(color: Colors.white60))),
+            dense: true,
+            title: Text(
+              'Queue is empty',
+              style: TextStyle(color: Colors.white60),
+            ),
+          ),
         for (final item in member.queue)
           ListTile(
             dense: true,
             leading: item.track.imageUrl == null
                 ? const Icon(Icons.music_note)
-                : Image.network(item.track.imageUrl!, width: 40, height: 40,
-                    errorBuilder: (_, _, _) => const Icon(Icons.music_note)),
+                : Image.network(
+                    item.track.imageUrl!,
+                    width: 40,
+                    height: 40,
+                    errorBuilder: (_, _, _) => const Icon(Icons.music_note),
+                  ),
             title: Text(item.track.name, overflow: TextOverflow.ellipsis),
             subtitle: Text(
-                '${item.track.artists} · ${formatMs(item.track.durationMs)}',
-                overflow: TextOverflow.ellipsis),
+              '${item.track.artists} · ${formatMs(item.track.durationMs)}',
+              overflow: TextOverflow.ellipsis,
+            ),
             trailing: IconButton(
               tooltip: 'Remove',
               icon: const Icon(Icons.remove_circle_outline),
               onPressed: () => controller.removeQueued(member.uuid, item.id),
             ),
+            onTap: () => openInSpotify(item.track),
           ),
       ],
     );

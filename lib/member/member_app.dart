@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/member_view.dart';
 import '../models/track.dart';
+import '../services/open_spotify.dart';
 import '../services/spotify_web_api.dart';
 import 'member_controller.dart';
 import 'qr_scanner_screen.dart';
@@ -45,12 +46,12 @@ class _MemberAppState extends State<MemberApp> {
       home: ListenableBuilder(
         listenable: _controller,
         builder: (context, _) => switch (_controller.phase) {
-          MemberPhase.loading =>
-            const Scaffold(body: Center(child: CircularProgressIndicator())),
+          MemberPhase.loading => const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          ),
           MemberPhase.noHost => NoHostScreen(controller: _controller),
           MemberPhase.needName ||
-          MemberPhase.joining =>
-            JoinScreen(controller: _controller),
+          MemberPhase.joining => JoinScreen(controller: _controller),
           MemberPhase.joined => PartyScreen(controller: _controller),
         },
       ),
@@ -119,8 +120,10 @@ class _NoHostScreenState extends State<NoHostScreen> {
           ),
           if (c.error != null) ...[
             const SizedBox(height: 16),
-            Text(c.error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              c.error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
         ],
       ),
@@ -162,9 +165,10 @@ class _JoinScreenState extends State<JoinScreen> {
         title: Text("Join ${c.displayHostName}'s party"),
         actions: [
           IconButton(
-              tooltip: 'Different party',
-              onPressed: c.leave,
-              icon: const Icon(Icons.logout)),
+            tooltip: 'Different party',
+            onPressed: c.leave,
+            icon: const Icon(Icons.logout),
+          ),
         ],
       ),
       body: ListView(
@@ -190,7 +194,10 @@ class _JoinScreenState extends State<JoinScreen> {
                   },
             icon: joining
                 ? const SizedBox(
-                    width: 18, height: 18, child: CircularProgressIndicator())
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(),
+                  )
                 : const Icon(Icons.login),
             label: Text(joining ? 'Joining…' : 'Join'),
           ),
@@ -204,8 +211,10 @@ class _JoinScreenState extends State<JoinScreen> {
           ),
           if (c.error != null) ...[
             const SizedBox(height: 16),
-            Text(c.error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              c.error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
         ],
       ),
@@ -273,7 +282,10 @@ class _PartyScreenState extends State<PartyScreen> {
     _debounce?.cancel();
     final link = SpotifyLink.parse(text);
     if (link != null) {
-      _debounce = Timer(const Duration(milliseconds: 200), () => _openLink(link));
+      _debounce = Timer(
+        const Duration(milliseconds: 200),
+        () => _openLink(link),
+      );
       return;
     }
     final q = text.trim();
@@ -380,10 +392,13 @@ class _PartyScreenState extends State<PartyScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text),
-              child: const Text('Save')),
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
@@ -396,9 +411,12 @@ class _PartyScreenState extends State<PartyScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(
+          ..showSnackBar(
+            SnackBar(
               content: Text('Added ${t.name}'),
-              duration: const Duration(seconds: 2)));
+              duration: const Duration(seconds: 2),
+            ),
+          );
       }
     } catch (e) {
       if (mounted) {
@@ -417,15 +435,20 @@ class _PartyScreenState extends State<PartyScreen> {
         title: Text("${c.displayHostName}'s party"),
         actions: [
           IconButton(
-              tooltip: 'Change my name',
-              onPressed: _rename,
-              icon: const Icon(Icons.edit)),
+            tooltip: 'Change my name',
+            onPressed: _rename,
+            icon: const Icon(Icons.edit),
+          ),
           IconButton(
-              tooltip: 'Refresh',
-              onPressed: c.requestState,
-              icon: const Icon(Icons.refresh)),
+            tooltip: 'Refresh',
+            onPressed: c.requestState,
+            icon: const Icon(Icons.refresh),
+          ),
           IconButton(
-              tooltip: 'Leave', onPressed: c.leave, icon: const Icon(Icons.logout)),
+            tooltip: 'Leave',
+            onPressed: c.leave,
+            icon: const Icon(Icons.logout),
+          ),
         ],
       ),
       body: ListView(
@@ -433,7 +456,8 @@ class _PartyScreenState extends State<PartyScreen> {
         children: [
           _NowPlayingCard(now: v?.now, waiting: v == null),
           if (v == null &&
-              DateTime.now().difference(_joinedAt) > const Duration(seconds: 10))
+              DateTime.now().difference(_joinedAt) >
+                  const Duration(seconds: 10))
             Card(
               color: theme.colorScheme.surfaceContainerHighest,
               child: Padding(
@@ -477,10 +501,15 @@ class _PartyScreenState extends State<PartyScreen> {
                   ? const Padding(
                       padding: EdgeInsets.all(12),
                       child: SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2)))
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
                   : IconButton(
-                      icon: const Icon(Icons.search), onPressed: _search),
+                      icon: const Icon(Icons.search),
+                      onPressed: _search,
+                    ),
             ),
             textInputAction: TextInputAction.search,
             onChanged: _onQueryChanged,
@@ -489,8 +518,10 @@ class _PartyScreenState extends State<PartyScreen> {
           if (_searchError != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(_searchError!,
-                  style: TextStyle(color: theme.colorScheme.error)),
+              child: Text(
+                _searchError!,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
             ),
           if (_collection != null) ...[
             Padding(
@@ -537,12 +568,16 @@ class _PartyScreenState extends State<PartyScreen> {
                 contentPadding: EdgeInsets.zero,
                 leading: _art(t),
                 title: Text(t.name, overflow: TextOverflow.ellipsis),
-                subtitle: Text('${t.artists} · ${formatMs(t.durationMs)}',
-                    overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  '${t.artists} · ${formatMs(t.durationMs)}',
+                  overflow: TextOverflow.ellipsis,
+                ),
                 trailing: IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: () => _add(t)),
-                onTap: () => _add(t),
+                  tooltip: 'Add to my queue',
+                  icon: const Icon(Icons.add_circle_outline),
+                  onPressed: () => _add(t),
+                ),
+                onTap: () => openInSpotify(t),
               ),
             if (!_collection!.complete)
               Row(
@@ -551,8 +586,10 @@ class _PartyScreenState extends State<PartyScreen> {
                     onPressed: _loadingMore ? null : () => _loadMore(),
                     icon: _loadingMore && !_loadAll
                         ? const SizedBox(
-                            width: 16, height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2))
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Icon(Icons.expand_more, size: 18),
                     label: const Text('Load more'),
                   ),
@@ -561,12 +598,16 @@ class _PartyScreenState extends State<PartyScreen> {
                     onPressed: _loadingMore ? null : () => _loadMore(all: true),
                     icon: _loadAll
                         ? const SizedBox(
-                            width: 16, height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2))
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Icon(Icons.unfold_more, size: 18),
-                    label: Text(_loadAll
-                        ? '${_collection!.tracks.length} / ${_collection!.total}'
-                        : 'Load all'),
+                    label: Text(
+                      _loadAll
+                          ? '${_collection!.tracks.length} / ${_collection!.total}'
+                          : 'Load all',
+                    ),
                   ),
                 ],
               ),
@@ -577,17 +618,22 @@ class _PartyScreenState extends State<PartyScreen> {
               contentPadding: EdgeInsets.zero,
               leading: _art(t),
               title: Text(t.name, overflow: TextOverflow.ellipsis),
-              subtitle: Text('${t.artists} · ${formatMs(t.durationMs)}',
-                  overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                '${t.artists} · ${formatMs(t.durationMs)}',
+                overflow: TextOverflow.ellipsis,
+              ),
               trailing: IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: () => _add(t)),
-              onTap: () => _add(t),
+                tooltip: 'Add to my queue',
+                icon: const Icon(Icons.add_circle_outline),
+                onPressed: () => _add(t),
+              ),
+              onTap: () => openInSpotify(t),
             ),
           if (_results.isNotEmpty)
             TextButton(
-                onPressed: () => setState(() => _results = const []),
-                child: const Text('Clear results')),
+              onPressed: () => setState(() => _results = const []),
+              child: const Text('Clear results'),
+            ),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -610,8 +656,10 @@ class _PartyScreenState extends State<PartyScreen> {
           if (v == null || v.myQueue.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('Nothing queued — search above.',
-                  style: TextStyle(color: Colors.white60)),
+              child: Text(
+                'Nothing queued — search above.',
+                style: TextStyle(color: Colors.white60),
+              ),
             ),
           if (v != null && v.myQueue.isNotEmpty)
             ReorderableListView(
@@ -640,15 +688,21 @@ class _PartyScreenState extends State<PartyScreen> {
                         ],
                       ),
                     ),
-                    title: Text(v.myQueue[i].track.name,
-                        overflow: TextOverflow.ellipsis),
+                    title: Text(
+                      v.myQueue[i].track.name,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Text(
-                        '${v.myQueue[i].track.artists} · '
-                        '${formatMs(v.myQueue[i].track.durationMs)}',
-                        overflow: TextOverflow.ellipsis),
+                      '${v.myQueue[i].track.artists} · '
+                      '${formatMs(v.myQueue[i].track.durationMs)}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     trailing: IconButton(
-                        icon: const Icon(Icons.remove_circle_outline),
-                        onPressed: () => c.dequeue(v.myQueue[i].id)),
+                      tooltip: 'Remove',
+                      icon: const Icon(Icons.remove_circle_outline),
+                      onPressed: () => c.dequeue(v.myQueue[i].id),
+                    ),
+                    onTap: () => openInSpotify(v.myQueue[i].track),
                   ),
               ],
             ),
@@ -657,8 +711,10 @@ class _PartyScreenState extends State<PartyScreen> {
           if (v == null || v.others.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('Just you so far.',
-                  style: TextStyle(color: Colors.white60)),
+              child: Text(
+                'Just you so far.',
+                style: TextStyle(color: Colors.white60),
+              ),
             ),
           if (v != null)
             for (final o in v.others)
@@ -683,7 +739,8 @@ class _PartyScreenState extends State<PartyScreen> {
             'empty queue keeps pace with the leader.\n\n'
             'Your own playlists: in the Spotify app, Share → Copy link on a '
             'playlist, album or song and paste it here. Installed to the Home '
-            'Screen, Spot also shows up in Spotify\'s Share menu.',
+            'Screen, Spot also shows up in Spotify\'s Share menu. Tap any '
+            'song to open it in Spotify.',
             style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
           ),
         ],
@@ -703,14 +760,19 @@ class _PartyScreenState extends State<PartyScreen> {
   int _myAirtime(MemberView v) {
     final n = v.now;
     if (n == null || n.memberUuid != c.identity.uuid) return v.myPlayedMs;
-    final live = n.positionAt(DateTime.now().millisecondsSinceEpoch) - n.positionMs;
+    final live =
+        n.positionAt(DateTime.now().millisecondsSinceEpoch) - n.positionMs;
     return v.myPlayedMs + (live > 0 ? live : 0);
   }
 
   Widget _art(Track t) => t.imageUrl == null
       ? const Icon(Icons.music_note)
-      : Image.network(t.imageUrl!, width: 40, height: 40,
-          errorBuilder: (_, _, _) => const Icon(Icons.music_note));
+      : Image.network(
+          t.imageUrl!,
+          width: 40,
+          height: 40,
+          errorBuilder: (_, _, _) => const Icon(Icons.music_note),
+        );
 }
 
 class _NowPlayingCard extends StatelessWidget {
@@ -723,61 +785,79 @@ class _NowPlayingCard extends StatelessWidget {
     final theme = Theme.of(context);
     final n = now;
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: n == null
-            ? Text(
-                waiting
-                    ? 'Connecting to the host…'
-                    : 'Nothing playing — add a song!',
-                style: theme.textTheme.titleMedium,
-              )
-            : Builder(builder: (context) {
-                final pos =
-                    n.positionAt(DateTime.now().millisecondsSinceEpoch);
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+      child: InkWell(
+        onTap: n == null ? null : () => openInSpotify(n.track),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: n == null
+              ? Text(
+                  waiting
+                      ? 'Connecting to the host…'
+                      : 'Nothing playing — add a song!',
+                  style: theme.textTheme.titleMedium,
+                )
+              : Builder(
+                  builder: (context) {
+                    final pos = n.positionAt(
+                      DateTime.now().millisecondsSinceEpoch,
+                    );
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (n.track.imageUrl != null)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: Image.network(n.track.imageUrl!,
-                                width: 56, height: 56,
-                                errorBuilder: (_, _, _) =>
-                                    const SizedBox(width: 56, height: 56)),
-                          ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(n.track.name,
-                                  style: theme.textTheme.titleMedium,
-                                  overflow: TextOverflow.ellipsis),
-                              Text(n.track.artists,
-                                  overflow: TextOverflow.ellipsis),
-                              Text('for ${n.memberName}',
-                                  style:
-                                      const TextStyle(color: Colors.white60)),
-                            ],
-                          ),
+                        Row(
+                          children: [
+                            if (n.track.imageUrl != null)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 12),
+                                child: Image.network(
+                                  n.track.imageUrl!,
+                                  width: 56,
+                                  height: 56,
+                                  errorBuilder: (_, _, _) =>
+                                      const SizedBox(width: 56, height: 56),
+                                ),
+                              ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    n.track.name,
+                                    style: theme.textTheme.titleMedium,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    n.track.artists,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    'for ${n.memberName}',
+                                    style: const TextStyle(
+                                      color: Colors.white60,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(
+                          value: n.track.durationMs > 0
+                              ? (pos / n.track.durationMs).clamp(0.0, 1.0)
+                              : null,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${formatMs(pos)} / ${formatMs(n.track.durationMs)}'
+                          '${n.paused ? '  (paused)' : ''}',
+                          style: const TextStyle(fontSize: 12),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    LinearProgressIndicator(
-                        value: n.track.durationMs > 0
-                            ? (pos / n.track.durationMs).clamp(0.0, 1.0)
-                            : null),
-                    const SizedBox(height: 4),
-                    Text(
-                        '${formatMs(pos)} / ${formatMs(n.track.durationMs)}'
-                        '${n.paused ? '  (paused)' : ''}',
-                        style: const TextStyle(fontSize: 12)),
-                  ],
-                );
-              }),
+                    );
+                  },
+                ),
+        ),
       ),
     );
   }
