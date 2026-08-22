@@ -226,6 +226,8 @@ class _PartyScreenState extends State<PartyScreen> {
   bool _searching = false;
   String? _searchError;
   Timer? _ticker;
+  Timer? _debounce;
+  int _searchSeq = 0;
 
   MemberController get c => widget.controller;
 
@@ -241,24 +243,43 @@ class _PartyScreenState extends State<PartyScreen> {
   @override
   void dispose() {
     _ticker?.cancel();
+    _debounce?.cancel();
     _query.dispose();
     super.dispose();
   }
 
+  /// Search as you type: wait for a pause in typing, ignore stale responses.
+  void _onQueryChanged(String text) {
+    _debounce?.cancel();
+    final q = text.trim();
+    if (q.length < 2) {
+      if (_results.isNotEmpty || _searchError != null) {
+        setState(() {
+          _results = const [];
+          _searchError = null;
+        });
+      }
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 450), _search);
+  }
+
   Future<void> _search() async {
+    _debounce?.cancel();
     final q = _query.text.trim();
     if (q.isEmpty) return;
+    final seq = ++_searchSeq;
     setState(() {
       _searching = true;
       _searchError = null;
     });
     try {
       final r = await c.search(q);
-      if (mounted) setState(() => _results = r);
+      if (mounted && seq == _searchSeq) setState(() => _results = r);
     } catch (e) {
-      if (mounted) setState(() => _searchError = '$e');
+      if (mounted && seq == _searchSeq) setState(() => _searchError = '$e');
     } finally {
-      if (mounted) setState(() => _searching = false);
+      if (mounted && seq == _searchSeq) setState(() => _searching = false);
     }
   }
 
@@ -316,6 +337,7 @@ class _PartyScreenState extends State<PartyScreen> {
                       icon: const Icon(Icons.search), onPressed: _search),
             ),
             textInputAction: TextInputAction.search,
+            onChanged: _onQueryChanged,
             onSubmitted: (_) => _search(),
           ),
           if (_searchError != null)
@@ -353,20 +375,46 @@ class _PartyScreenState extends State<PartyScreen> {
               child: Text('Nothing queued — search above.',
                   style: TextStyle(color: Colors.white60)),
             ),
-          if (v != null)
-            for (final item in v.myQueue)
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: _art(item.track),
-                title: Text(item.track.name, overflow: TextOverflow.ellipsis),
-                subtitle: Text(
-                    '${item.track.artists} · ${formatMs(item.track.durationMs)}',
-                    overflow: TextOverflow.ellipsis),
-                trailing: IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: () => c.dequeue(item.id)),
-              ),
+          if (v != null && v.myQueue.isNotEmpty)
+            ReorderableListView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              onReorder: (oldIndex, newIndex) {
+                final ids = v.myQueue.map((q) => q.id).toList();
+                if (newIndex > oldIndex) newIndex--;
+                ids.insert(newIndex, ids.removeAt(oldIndex));
+                c.reorder(ids);
+              },
+              children: [
+                for (var i = 0; i < v.myQueue.length; i++)
+                  ListTile(
+                    key: ValueKey(v.myQueue[i].id),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: ReorderableDragStartListener(
+                      index: i,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.drag_handle, color: Colors.white54),
+                          const SizedBox(width: 6),
+                          _art(v.myQueue[i].track),
+                        ],
+                      ),
+                    ),
+                    title: Text(v.myQueue[i].track.name,
+                        overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                        '${v.myQueue[i].track.artists} · '
+                        '${formatMs(v.myQueue[i].track.durationMs)}',
+                        overflow: TextOverflow.ellipsis),
+                    trailing: IconButton(
+                        icon: const Icon(Icons.remove_circle_outline),
+                        onPressed: () => c.dequeue(v.myQueue[i].id)),
+                  ),
+              ],
+            ),
           const SizedBox(height: 16),
           Text('Everyone else', style: theme.textTheme.titleMedium),
           if (v == null || v.others.isEmpty)

@@ -116,6 +116,29 @@ class Party {
     return m.queue.length != before;
   }
 
+  /// Reorders the member's queue to follow [itemIds]; items not mentioned
+  /// keep their relative order at the end (they were added after the member
+  /// dragged). Returns true if the order changed.
+  bool reorder(String uuid, List<String> itemIds) {
+    final m = _members[uuid];
+    if (m == null) return false;
+    final byId = {for (final q in m.queue) q.id: q};
+    final next = <QueueItem>[
+      for (final id in itemIds)
+        ?byId.remove(id),
+      ...m.queue.where((q) => byId.containsKey(q.id)),
+    ];
+    var changed = next.length != m.queue.length;
+    for (var i = 0; !changed && i < next.length; i++) {
+      changed = next[i].id != m.queue[i].id;
+    }
+    if (!changed) return false;
+    m.queue
+      ..clear()
+      ..addAll(next);
+    return true;
+  }
+
   /// Removes and returns the next item to play, or null if every queue is
   /// empty.
   (Member, QueueItem)? takeNext() {

@@ -190,6 +190,38 @@ class MemberController extends ChangeNotifier {
     );
   }
 
+  /// Applies the new order locally right away (so the drag doesn't snap
+  /// back) and tells the host; the host's next snapshot confirms it.
+  Future<void> reorder(List<String> itemIds) async {
+    final v = view;
+    if (v != null) {
+      final byId = {for (final q in v.myQueue) q.id: q};
+      final next = [
+        for (final id in itemIds)
+          ?byId.remove(id),
+        ...v.myQueue.where((q) => byId.containsKey(q.id)),
+      ];
+      view = MemberView(
+        hostName: v.hostName,
+        token: v.token,
+        tokenExpiresAt: v.tokenExpiresAt,
+        now: v.now,
+        myPlayedMs: v.myPlayedMs,
+        myQueue: next,
+        others: v.others,
+        sentAt: v.sentAt,
+      );
+      notifyListeners();
+    }
+    await switchClient.send(
+      hostUuid!,
+      Message(
+        type: MsgType.reorder,
+        body: {'uuid': identity.uuid, 'itemIds': itemIds},
+      ).toData(),
+    );
+  }
+
   Future<void> dequeue(String itemId) => switchClient.send(
         hostUuid!,
         Message(

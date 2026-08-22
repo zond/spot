@@ -60,6 +60,19 @@ void main() {
     expect(p.dequeue('a', 'x'), isFalse);
   });
 
+  test('reorder follows the given ids, unknown ones go last', () {
+    final p = Party();
+    p.join('a', 'A', 1);
+    for (final id in ['x', 'y', 'z']) {
+      p.enqueue('a', q(id, 1), 2);
+    }
+    expect(p.reorder('a', ['z', 'x']), isTrue);
+    expect(p.member('a')!.queue.map((i) => i.id), ['z', 'x', 'y']);
+    expect(p.reorder('a', ['z', 'x', 'y']), isFalse);
+    expect(p.reorder('a', ['nope']), isFalse);
+    expect(p.member('a')!.queue.map((i) => i.id), ['z', 'x', 'y']);
+  });
+
   test('json round trip', () {
     final p = Party();
     p.join('a', 'A', 1);

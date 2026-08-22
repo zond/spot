@@ -505,6 +505,14 @@ class HostController extends ChangeNotifier {
           notifyListeners();
           broadcast();
         }
+      case MsgType.reorder:
+        final ids = m.body['itemIds'];
+        if (ids is! List) return;
+        if (party.reorder(uuid, ids.whereType<String>().toList())) {
+          unawaited(_persistParty());
+          notifyListeners();
+          broadcast();
+        }
     }
   }
 

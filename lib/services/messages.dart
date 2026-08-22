@@ -14,6 +14,9 @@ abstract final class MsgType {
   /// {uuid, itemId}
   static const dequeue = 'dequeue';
 
+  /// {uuid, itemIds: [...]} — full desired order of the member's queue.
+  static const reorder = 'reorder';
+
   // host -> member
   /// MemberView
   static const state = 'state';
