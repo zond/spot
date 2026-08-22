@@ -1,10 +1,11 @@
 import 'dart:async';
+import 'dart:js_interop';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:web/web.dart' as web;
 
-import '../config.dart';
 import '../models/member_view.dart';
 import '../models/party.dart';
 import '../models/track.dart';
@@ -43,8 +44,8 @@ class MemberController extends ChangeNotifier {
   String? error;
   DateTime? lastStateAt;
 
-  Timer? _poll;
   bool _polling = false;
+  bool _watchingVisibility = false;
   final _seen = SeenIds();
 
   String get displayHostName => view?.hostName ?? hostName ?? 'the host';
@@ -127,8 +128,11 @@ class MemberController extends ChangeNotifier {
       await switchClient.register(
           uuid: identity.uuid, token: token, secret: identity.secret);
       push.onMessage(_handleData);
+      _watchVisibility();
       await _sendJoin();
-      _poll ??= Timer.periodic(Config.inboxPollInterval, (_) => _pollInbox());
+      // Live updates arrive over FCM; the inbox is only drained to catch up
+      // (now, after being in the background, or on manual refresh).
+      unawaited(_drainInbox());
       phase = MemberPhase.joined;
     } catch (e) {
       error = '$e';
@@ -138,8 +142,6 @@ class MemberController extends ChangeNotifier {
   }
 
   Future<void> leave() async {
-    _poll?.cancel();
-    _poll = null;
     hostUuid = null;
     hostName = null;
     view = null;
@@ -151,8 +153,27 @@ class MemberController extends ChangeNotifier {
   }
 
   /// Re-announces ourselves; the host answers with a fresh snapshot (and
-  /// token).
-  Future<void> requestState() => _sendJoin();
+  /// token). Also drains the inbox in case a push was missed.
+  Future<void> requestState() async {
+    unawaited(_drainInbox());
+    await _sendJoin();
+  }
+
+  /// Pushes that arrived while the tab was hidden went to the service worker
+  /// (as a notification), not to the page: catch up when we become visible.
+  void _watchVisibility() {
+    if (_watchingVisibility) return;
+    _watchingVisibility = true;
+    web.document.addEventListener(
+      'visibilitychange',
+      ((web.Event _) {
+        if (web.document.visibilityState == 'visible' &&
+            phase == MemberPhase.joined) {
+          unawaited(_drainInbox());
+        }
+      }).toJS,
+    );
+  }
 
   /// Changes the display name; a join message carries the new name to the
   /// host, which tells everyone.
@@ -255,7 +276,7 @@ class MemberController extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> _pollInbox() async {
+  Future<void> _drainInbox() async {
     if (_polling) return;
     _polling = true;
     try {
@@ -271,9 +292,4 @@ class MemberController extends ChangeNotifier {
     }
   }
 
-  @override
-  void dispose() {
-    _poll?.cancel();
-    super.dispose();
-  }
 }
