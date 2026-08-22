@@ -100,7 +100,10 @@ The Spotify client id is entered on the setup screen (stored on the phone), so
 the APK is generic; `--dart-define=SPOTIFY_CLIENT_ID=...` only sets a default.
 
 On the phone: Spotify app installed and logged in → open Spot → client id + name
-→ *Log in* (Spotify consent in a browser tab) → *Start party*. Android will ask for
+→ *Log in* (Spotify consent in a browser tab; this also grants
+`app-remote-control`, which is what lets the Spotify app accept our App Remote
+connection without showing its own dialog — Android blocks that dialog as a
+background activity launch and the connect would hang) → *Start party*. Android will ask for
 notification permission and to ignore battery optimisation: accept both, they
 keep the party alive with the screen off. First connect, the Spotify app shows
 an App Remote consent dialog.

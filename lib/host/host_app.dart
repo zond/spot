@@ -172,12 +172,22 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
             const SizedBox(height: 16),
             ListTile(
               leading: Icon(
-                auth.isLoggedIn ? Icons.check_circle : Icons.music_note,
-                color: auth.isLoggedIn ? Colors.green : null,
+                auth.needsRelogin
+                    ? Icons.warning_amber
+                    : auth.isLoggedIn
+                        ? Icons.check_circle
+                        : Icons.music_note,
+                color: auth.needsRelogin
+                    ? Colors.orange
+                    : auth.isLoggedIn
+                        ? Colors.green
+                        : null,
               ),
-              title: Text(auth.isLoggedIn
-                  ? 'Logged in to Spotify'
-                  : 'Log in to Spotify (Premium)'),
+              title: Text(auth.needsRelogin
+                  ? 'Log in again (new permissions needed)'
+                  : auth.isLoggedIn
+                      ? 'Logged in to Spotify'
+                      : 'Log in to Spotify (Premium)'),
               subtitle: _loginError != null
                   ? Text(_loginError!,
                       style: TextStyle(color: Theme.of(context).colorScheme.error))
@@ -198,9 +208,10 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: hasClientId && auth.isLoggedIn && !starting
-                  ? _start
-                  : null,
+              onPressed:
+                  hasClientId && auth.isLoggedIn && !auth.needsRelogin && !starting
+                      ? _start
+                      : null,
               icon: starting
                   ? const SizedBox(
                       width: 18, height: 18, child: CircularProgressIndicator())

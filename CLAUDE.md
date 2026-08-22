@@ -32,6 +32,11 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 
 ## Conventions / decisions
 
+- `Config.spotifyScopes` must include `app-remote-control`: the Spotify app's own
+  App Remote consent activity is blocked by Android (BAL) while Spot is in front,
+  so the permission has to be pre-granted through the PKCE login. `SpotifyAuth`
+  stores the granted scope set and `needsRelogin` forces a re-login when it changes.
+
 - Release builds need `android/app/proguard-rules.pro` (`-keep class com.spotify.** { *; }`):
   App Remote finds the Spotify app via reflection and R8 otherwise strips the
   locator's constructor, so release APKs claim Spotify isn't installed.

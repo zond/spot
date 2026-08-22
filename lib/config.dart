@@ -18,10 +18,13 @@ abstract final class Config {
   static const spotifyRedirectUri = 'spot://callback';
   static const spotifyRedirectScheme = 'spot';
 
-  /// Scopes for the host token. Members only need search, which needs none;
-  /// the playback scopes keep the Web API usable as a fallback controller.
+  /// Scopes for the host token. `app-remote-control` pre-authorises the App
+  /// Remote connection so the Spotify app does not have to show its own
+  /// consent dialog (which Android blocks as a background activity launch).
+  /// Members only need search, which needs no scope; the playback scopes keep
+  /// the Web API usable as a fallback controller.
   static const spotifyScopes =
-      'user-read-playback-state user-modify-playback-state';
+      'app-remote-control user-read-playback-state user-modify-playback-state';
 
   /// FCM web push VAPID key of the fcm-switch Firebase project.
   static const vapidKey =

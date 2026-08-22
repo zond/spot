@@ -23,10 +23,15 @@ class SpotifyAuth extends ChangeNotifier {
   static const _kAccess = 'spotify_access_token';
   static const _kRefresh = 'spotify_refresh_token';
   static const _kExpires = 'spotify_expires_at';
+  static const _kScopes = 'spotify_scopes';
 
   String? _access;
   String? _refresh;
   DateTime? _expiresAt;
+  String? _scopes;
+
+  /// True when logged in with an older scope set: log out and in again.
+  bool get needsRelogin => isLoggedIn && _scopes != Config.spotifyScopes;
 
   String? get accessToken => _access;
   DateTime? get expiresAt => _expiresAt;
@@ -38,6 +43,7 @@ class SpotifyAuth extends ChangeNotifier {
     _refresh = prefs.getString(_kRefresh);
     final exp = prefs.getInt(_kExpires);
     _expiresAt = exp == null ? null : DateTime.fromMillisecondsSinceEpoch(exp);
+    _scopes = prefs.getString(_kScopes);
     notifyListeners();
   }
 
@@ -80,6 +86,10 @@ class SpotifyAuth extends ChangeNotifier {
       'client_id': HostSettings.clientId,
       'code_verifier': verifier,
     });
+    _scopes = Config.spotifyScopes;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kScopes, _scopes!);
+    notifyListeners();
   }
 
   /// A token valid for at least [margin], refreshing if necessary. Null when
@@ -144,6 +154,8 @@ class SpotifyAuth extends ChangeNotifier {
     await prefs.remove(_kAccess);
     await prefs.remove(_kRefresh);
     await prefs.remove(_kExpires);
+    await prefs.remove(_kScopes);
+    _scopes = null;
     notifyListeners();
   }
 

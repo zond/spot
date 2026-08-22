@@ -104,6 +104,10 @@ class HostController extends ChangeNotifier {
 
       status = 'Checking Spotify login…';
       notifyListeners();
+      if (auth.needsRelogin) {
+        throw StateError(
+            'Spot needs new Spotify permissions: log out and log in again.');
+      }
       final token = await auth.validToken();
       if (token == null) throw StateError('Log in to Spotify first');
 
