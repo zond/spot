@@ -19,7 +19,7 @@ abstract final class SpotifyWebApi {
   static Future<List<Track>> search(
     String token,
     String query, {
-    int limit = 20,
+    int limit = 10, // Development Mode apps: max 10 per request
     String? market,
   }) async {
     final uri = Uri.https('api.spotify.com', '/v1/search', {

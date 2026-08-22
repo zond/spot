@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/party.dart';
 import '../models/track.dart';
@@ -274,6 +275,16 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
     super.dispose();
   }
 
+  /// Opens the member page in the browser so the host can join too.
+  Future<void> _openJoinLink() async {
+    final ok = await launchUrl(Uri.parse(c.joinUrl),
+        mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open a browser')));
+    }
+  }
+
   Future<void> _confirmStop() async {
     final yes = await showDialog<bool>(
       context: context,
@@ -322,19 +333,31 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                   const Text('Scan to join',
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
-                  Container(
-                    color: Colors.white,
-                    padding: const EdgeInsets.all(8),
-                    child: QrImageView(data: c.joinUrl, size: 240),
+                  InkWell(
+                    onTap: _openJoinLink,
+                    child: Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.all(8),
+                      child: QrImageView(data: c.joinUrl, size: 240),
+                    ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
+                  const Text('Tap the code or link to join from this phone too',
+                      style: TextStyle(fontSize: 11, color: Colors.white60)),
+                  const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Flexible(
-                        child: Text(c.joinUrl,
-                            style: const TextStyle(fontSize: 11),
-                            overflow: TextOverflow.ellipsis),
+                        child: InkWell(
+                          onTap: _openJoinLink,
+                          child: Text(c.joinUrl,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.lightGreenAccent,
+                                  decoration: TextDecoration.underline),
+                              overflow: TextOverflow.ellipsis),
+                        ),
                       ),
                       IconButton(
                         tooltip: 'Copy link',
