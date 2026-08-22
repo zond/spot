@@ -267,6 +267,10 @@ class MemberController extends ChangeNotifier {
     }
   }
 
+  /// Next page of a playlist opened with [openLink].
+  Future<bool> loadMore(TrackCollection col) async =>
+      SpotifyWebApi.loadMore(await _token(), col);
+
   Future<void> enqueue(Track track) async {
     final item = QueueItem(id: const Uuid().v4(), track: track);
     await switchClient.send(

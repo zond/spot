@@ -232,6 +232,9 @@ class _PartyScreenState extends State<PartyScreen> {
   Timer? _debounce;
   int _searchSeq = 0;
   TrackCollection? _collection;
+  final _filter = TextEditingController();
+  bool _loadingMore = false;
+  bool _loadAll = false;
   final _joinedAt = DateTime.now();
 
   MemberController get c => widget.controller;
@@ -259,6 +262,8 @@ class _PartyScreenState extends State<PartyScreen> {
     _ticker?.cancel();
     _debounce?.cancel();
     _query.dispose();
+    _filter.dispose();
+    _loadAll = false;
     super.dispose();
   }
 
@@ -294,11 +299,43 @@ class _PartyScreenState extends State<PartyScreen> {
     });
     try {
       final col = await c.openLink(link);
-      if (mounted && seq == _searchSeq) setState(() => _collection = col);
+      if (mounted && seq == _searchSeq) {
+        setState(() {
+          _collection = col;
+          _filter.clear();
+        });
+      }
     } catch (e) {
       if (mounted && seq == _searchSeq) setState(() => _searchError = '$e');
     } finally {
       if (mounted && seq == _searchSeq) setState(() => _searching = false);
+    }
+  }
+
+  /// Loads the next page of the open playlist, or everything when [all].
+  Future<void> _loadMore({bool all = false}) async {
+    final col = _collection;
+    if (col == null || col.complete || _loadingMore) return;
+    setState(() {
+      _loadingMore = true;
+      _loadAll = all;
+    });
+    try {
+      do {
+        final more = await c.loadMore(col);
+        if (!mounted || _collection != col) return;
+        setState(() {});
+        if (!more) break;
+      } while (_loadAll && !col.complete);
+    } catch (e) {
+      if (mounted) setState(() => _searchError = '$e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingMore = false;
+          _loadAll = false;
+        });
+      }
     }
   }
 
@@ -463,7 +500,10 @@ class _PartyScreenState extends State<PartyScreen> {
                   Expanded(
                     child: Text(
                       '${_collection!.kind}: ${_collection!.name} · '
-                      '${_collection!.tracks.length} tracks',
+                      '${_collection!.complete ? '' : 'loaded '}'
+                      '${_collection!.tracks.length}'
+                      '${_collection!.complete ? '' : ' of ${_collection!.total}'}'
+                      ' tracks',
                       style: theme.textTheme.titleSmall,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -473,13 +513,25 @@ class _PartyScreenState extends State<PartyScreen> {
                     icon: const Icon(Icons.close, size: 18),
                     onPressed: () => setState(() {
                       _collection = null;
+                      _loadAll = false;
                       _query.clear();
                     }),
                   ),
                 ],
               ),
             ),
-            for (final t in _collection!.tracks)
+            if (_collection!.tracks.length > 8 || !_collection!.complete)
+              TextField(
+                controller: _filter,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  prefixIcon: Icon(Icons.filter_list, size: 18),
+                  hintText: 'Filter this list',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            for (final t in _collection!.tracks.where(_matchesFilter))
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -491,6 +543,32 @@ class _PartyScreenState extends State<PartyScreen> {
                     icon: const Icon(Icons.add_circle_outline),
                     onPressed: () => _add(t)),
                 onTap: () => _add(t),
+              ),
+            if (!_collection!.complete)
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _loadingMore ? null : () => _loadMore(),
+                    icon: _loadingMore && !_loadAll
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.expand_more, size: 18),
+                    label: const Text('Load more'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _loadingMore ? null : () => _loadMore(all: true),
+                    icon: _loadAll
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.unfold_more, size: 18),
+                    label: Text(_loadAll
+                        ? '${_collection!.tracks.length} / ${_collection!.total}'
+                        : 'Load all'),
+                  ),
+                ],
               ),
           ],
           for (final t in _results)
@@ -611,6 +689,13 @@ class _PartyScreenState extends State<PartyScreen> {
         ],
       ),
     );
+  }
+
+  bool _matchesFilter(Track t) {
+    final f = _filter.text.trim().toLowerCase();
+    if (f.isEmpty) return true;
+    return t.name.toLowerCase().contains(f) ||
+        t.artists.toLowerCase().contains(f);
   }
 
   /// Airtime including the not-yet-credited part of a track of mine that is

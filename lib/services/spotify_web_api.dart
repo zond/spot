@@ -31,13 +31,25 @@ class SpotifyLink {
   }
 }
 
-/// Tracks of a playlist or album (or a single shared track).
+/// Tracks of a playlist or album (or a single shared track). Playlists load
+/// page by page: [tracks] holds what has been fetched so far, [total] how
+/// many there are, and [nextOffset] where to continue (null = complete).
 class TrackCollection {
-  const TrackCollection(
-      {required this.kind, required this.name, required this.tracks});
+  TrackCollection({
+    required this.kind,
+    required this.name,
+    required this.tracks,
+    this.id,
+    int? total,
+    this.nextOffset,
+  }) : total = total ?? tracks.length;
   final String kind;
   final String name;
+  final String? id;
   final List<Track> tracks;
+  int total;
+  int? nextOffset;
+  bool get complete => nextOffset == null;
 }
 
 /// The bits of the Spotify Web API the party uses. Works with any valid user
@@ -59,43 +71,62 @@ abstract final class SpotifyWebApi {
       Track.fromSpotify(
           await _get(token, Uri.https('api.spotify.com', '/v1/tracks/$id')));
 
-  /// Up to [maxTracks] tracks of a playlist (episodes and unavailable items
-  /// are skipped).
-  static Future<TrackCollection> playlist(String token, String id,
-      {int maxTracks = 300}) async {
+  /// A playlist's name and its first page of tracks; call [loadMore] for the
+  /// rest (episodes and unavailable items are skipped).
+  static Future<TrackCollection> playlist(String token, String id) async {
     final meta = await _get(token,
         Uri.https('api.spotify.com', '/v1/playlists/$id', {'fields': 'name'}));
-    final tracks = <Track>[];
-    var offset = 0;
-    var limit = 50;
-    while (tracks.length < maxTracks) {
-      final Map<String, dynamic> page;
+    final col = TrackCollection(
+        kind: 'Playlist',
+        name: meta['name'] as String? ?? 'Playlist',
+        id: id,
+        tracks: [],
+        total: 0,
+        nextOffset: 0);
+    await loadMore(token, col);
+    return col;
+  }
+
+  static int _playlistPageSize = 50;
+
+  /// Fetches the next page of a playlist into [col]. Returns false when there
+  /// was nothing more to load.
+  static Future<bool> loadMore(String token, TrackCollection col) async {
+    final id = col.id;
+    final offset = col.nextOffset;
+    if (id == null || offset == null) return false;
+    Map<String, dynamic> page;
+    while (true) {
       try {
         page = await _get(
             token,
-            Uri.https('api.spotify.com', '/v1/playlists/$id/items',
-                {'limit': '$limit', 'offset': '$offset'}));
+            Uri.https('api.spotify.com', '/v1/playlists/$id/items', {
+              'limit': '$_playlistPageSize',
+              'offset': '$offset',
+            }));
+        break;
       } on SpotifyApiException catch (e) {
-        if (e.status == 400 && limit > 10 && e.body.contains('limit')) {
-          limit = 10; // Development Mode may cap page size too
+        if (e.status == 400 &&
+            _playlistPageSize > 10 &&
+            e.body.contains('limit')) {
+          _playlistPageSize = 10; // Development Mode caps page size too
           continue;
         }
         rethrow;
       }
-      final items = page['items'] as List? ?? const [];
-      for (final it in items) {
-        final t = ((it as Map)['track'] ?? it['item']) as Map?;
-        if (t == null || t['id'] == null || (t['type'] ?? 'track') != 'track') {
-          continue;
-        }
-        tracks.add(Track.fromSpotify(t.cast<String, dynamic>()));
-      }
-      offset += items.length;
-      if (items.isEmpty || page['next'] == null) break;
     }
-    return TrackCollection(
-        kind: 'Playlist', name: meta['name'] as String? ?? 'Playlist',
-        tracks: tracks);
+    final items = page['items'] as List? ?? const [];
+    for (final it in items) {
+      final t = ((it as Map)['track'] ?? it['item']) as Map?;
+      if (t == null || t['id'] == null || (t['type'] ?? 'track') != 'track') {
+        continue;
+      }
+      col.tracks.add(Track.fromSpotify(t.cast<String, dynamic>()));
+    }
+    col.total = (page['total'] as num?)?.toInt() ?? (offset + items.length);
+    col.nextOffset =
+        items.isEmpty || page['next'] == null ? null : offset + items.length;
+    return items.isNotEmpty;
   }
 
   static Future<TrackCollection> album(String token, String id) async {
