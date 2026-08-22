@@ -337,6 +337,7 @@ class HostController extends ChangeNotifier {
       if (pos >= _lastPos) {
         party.credit(currentMember!.uuid, pos - _lastPos);
         _lastPos = pos;
+        _persistThrottled();
       } else {
         // Position jumped back: a seek, or Spotify restarted the track after
         // it ended (repeat). Treat the latter as the end.
@@ -594,9 +595,32 @@ class HostController extends ChangeNotifier {
 
   // ----------------------------------------------------------- persistence
 
+  DateTime _lastPersist = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Saves members, queues and airtime. The track playing right now is saved
+  /// at the head of its member's queue so a restart resumes with it.
   Future<void> _persistParty() async {
+    _lastPersist = DateTime.now();
+    final json = party.toJson();
+    final cur = current;
+    final cm = currentMember;
+    if (cur != null && cm != null) {
+      for (final m in json['members'] as List) {
+        if ((m as Map)['uuid'] == cm.uuid) {
+          (m['queue'] as List).insert(0, cur.toJson());
+        }
+      }
+    }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_partyKey, jsonEncode(party.toJson()));
+    await prefs.setString(_partyKey, jsonEncode(json));
+  }
+
+  /// Airtime accrues continuously; persist it now and then so a crash or
+  /// reinstall doesn't forget it.
+  void _persistThrottled() {
+    if (DateTime.now().difference(_lastPersist) > const Duration(seconds: 10)) {
+      unawaited(_persistParty());
+    }
   }
 
   Future<void> _restoreParty() async {
