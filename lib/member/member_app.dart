@@ -230,6 +230,7 @@ class _PartyScreenState extends State<PartyScreen> {
   Timer? _debounce;
   int _searchSeq = 0;
   TrackCollection? _collection;
+  final _joinedAt = DateTime.now();
 
   MemberController get c => widget.controller;
 
@@ -238,7 +239,8 @@ class _PartyScreenState extends State<PartyScreen> {
     super.initState();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       final now = c.view?.now;
-      if (now != null && !now.paused && mounted) setState(() {});
+      final waiting = c.view == null;
+      if ((waiting || (now != null && !now.paused)) && mounted) setState(() {});
     });
     final shared = c.takeSharedText();
     if (shared != null) {
@@ -391,6 +393,41 @@ class _PartyScreenState extends State<PartyScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           _NowPlayingCard(now: v?.now, waiting: v == null),
+          if (v == null &&
+              DateTime.now().difference(_joinedAt) > const Duration(seconds: 10))
+            Card(
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "${c.displayHostName} isn't answering. Is the party "
+                      'running on their phone? If you are at a different '
+                      'party, scan its QR code.',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: c.requestState,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('Retry'),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: c.leave,
+                          icon: const Icon(Icons.qr_code_scanner, size: 18),
+                          label: const Text('Other party'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
           const SizedBox(height: 16),
           TextField(
             controller: _query,
