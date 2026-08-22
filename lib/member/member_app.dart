@@ -1,0 +1,479 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../models/member_view.dart';
+import '../models/track.dart';
+import 'member_controller.dart';
+import 'qr_scanner_screen.dart';
+
+class MemberApp extends StatefulWidget {
+  const MemberApp({super.key});
+
+  @override
+  State<MemberApp> createState() => _MemberAppState();
+}
+
+class _MemberAppState extends State<MemberApp> {
+  final _controller = MemberController();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.init();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Spot',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF1DB954),
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      home: ListenableBuilder(
+        listenable: _controller,
+        builder: (context, _) => switch (_controller.phase) {
+          MemberPhase.loading =>
+            const Scaffold(body: Center(child: CircularProgressIndicator())),
+          MemberPhase.noHost => NoHostScreen(controller: _controller),
+          MemberPhase.needName ||
+          MemberPhase.joining =>
+            JoinScreen(controller: _controller),
+          MemberPhase.joined => PartyScreen(controller: _controller),
+        },
+      ),
+    );
+  }
+}
+
+// ------------------------------------------------------------- no host
+
+class NoHostScreen extends StatefulWidget {
+  const NoHostScreen({super.key, required this.controller});
+  final MemberController controller;
+
+  @override
+  State<NoHostScreen> createState() => _NoHostScreenState();
+}
+
+class _NoHostScreenState extends State<NoHostScreen> {
+  final _link = TextEditingController();
+
+  @override
+  void dispose() {
+    _link.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scan() async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+    );
+    if (result != null) await widget.controller.setHost(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Spot')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          const Text(
+            'Join a party by scanning the host\'s QR code with your camera '
+            'app — or scan it from here:',
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _scan,
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Scan QR code'),
+          ),
+          const SizedBox(height: 32),
+          TextField(
+            controller: _link,
+            decoration: const InputDecoration(
+              labelText: 'Or paste a join link',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: c.setHost,
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: () => c.setHost(_link.text),
+            child: const Text('Use link'),
+          ),
+          if (c.error != null) ...[
+            const SizedBox(height: 16),
+            Text(c.error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- join
+
+class JoinScreen extends StatefulWidget {
+  const JoinScreen({super.key, required this.controller});
+  final MemberController controller;
+
+  @override
+  State<JoinScreen> createState() => _JoinScreenState();
+}
+
+class _JoinScreenState extends State<JoinScreen> {
+  late final TextEditingController _name;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.controller.identity.name ?? '');
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    final joining = c.phase == MemberPhase.joining;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Join ${c.displayHostName}'s party"),
+        actions: [
+          IconButton(
+              tooltip: 'Different party',
+              onPressed: c.leave,
+              icon: const Icon(Icons.logout)),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          TextField(
+            controller: _name,
+            autofocus: !c.identity.hasName,
+            decoration: const InputDecoration(
+              labelText: 'Your name',
+              border: OutlineInputBorder(),
+            ),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (v) => v.trim().isEmpty ? null : c.join(v),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: joining
+                ? null
+                : () {
+                    final n = _name.text.trim();
+                    if (n.isNotEmpty) c.join(n);
+                  },
+            icon: joining
+                ? const SizedBox(
+                    width: 18, height: 18, child: CircularProgressIndicator())
+                : const Icon(Icons.login),
+            label: Text(joining ? 'Joining…' : 'Join'),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Your browser will ask to allow notifications: that is how the '
+            'host sends you the queue and the search token.',
+            style: TextStyle(color: Colors.white60),
+          ),
+          if (c.error != null) ...[
+            const SizedBox(height: 16),
+            Text(c.error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// --------------------------------------------------------------- party
+
+class PartyScreen extends StatefulWidget {
+  const PartyScreen({super.key, required this.controller});
+  final MemberController controller;
+
+  @override
+  State<PartyScreen> createState() => _PartyScreenState();
+}
+
+class _PartyScreenState extends State<PartyScreen> {
+  final _query = TextEditingController();
+  List<Track> _results = const [];
+  bool _searching = false;
+  String? _searchError;
+  Timer? _ticker;
+
+  MemberController get c => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      final now = c.view?.now;
+      if (now != null && !now.paused && mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    _query.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final q = _query.text.trim();
+    if (q.isEmpty) return;
+    setState(() {
+      _searching = true;
+      _searchError = null;
+    });
+    try {
+      final r = await c.search(q);
+      if (mounted) setState(() => _results = r);
+    } catch (e) {
+      if (mounted) setState(() => _searchError = '$e');
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  Future<void> _add(Track t) async {
+    try {
+      await c.enqueue(t);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+              content: Text('Added ${t.name}'),
+              duration: const Duration(seconds: 2)));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not add: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final v = c.view;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("${c.displayHostName}'s party"),
+        actions: [
+          IconButton(
+              tooltip: 'Refresh',
+              onPressed: c.requestState,
+              icon: const Icon(Icons.refresh)),
+          IconButton(
+              tooltip: 'Leave', onPressed: c.leave, icon: const Icon(Icons.logout)),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _NowPlayingCard(now: v?.now, waiting: v == null),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _query,
+            decoration: InputDecoration(
+              labelText: 'Search Spotify',
+              border: const OutlineInputBorder(),
+              suffixIcon: _searching
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2)))
+                  : IconButton(
+                      icon: const Icon(Icons.search), onPressed: _search),
+            ),
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _search(),
+          ),
+          if (_searchError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(_searchError!,
+                  style: TextStyle(color: theme.colorScheme.error)),
+            ),
+          for (final t in _results)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: _art(t),
+              title: Text(t.name, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${t.artists} · ${formatMs(t.durationMs)}',
+                  overflow: TextOverflow.ellipsis),
+              trailing: IconButton(
+                  icon: const Icon(Icons.add_circle_outline),
+                  onPressed: () => _add(t)),
+              onTap: () => _add(t),
+            ),
+          if (_results.isNotEmpty)
+            TextButton(
+                onPressed: () => setState(() => _results = const []),
+                child: const Text('Clear results')),
+          const SizedBox(height: 16),
+          Text(
+            'My queue'
+            '${v == null ? '' : ' · airtime ${formatMs(v.myPlayedMs)}'}',
+            style: theme.textTheme.titleMedium,
+          ),
+          if (v == null || v.myQueue.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Nothing queued — search above.',
+                  style: TextStyle(color: Colors.white60)),
+            ),
+          if (v != null)
+            for (final item in v.myQueue)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: _art(item.track),
+                title: Text(item.track.name, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                    '${item.track.artists} · ${formatMs(item.track.durationMs)}',
+                    overflow: TextOverflow.ellipsis),
+                trailing: IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: () => c.dequeue(item.id)),
+              ),
+          const SizedBox(height: 16),
+          Text('Everyone else', style: theme.textTheme.titleMedium),
+          if (v == null || v.others.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Just you so far.',
+                  style: TextStyle(color: Colors.white60)),
+            ),
+          if (v != null)
+            for (final o in v.others)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  v.now?.memberUuid == o.uuid ? Icons.volume_up : Icons.person,
+                  color: v.now?.memberUuid == o.uuid ? Colors.green : null,
+                ),
+                title: Text(o.name),
+                subtitle: Text(
+                  'airtime ${formatMs(o.playedMs)} · ${o.queueLength} queued'
+                  '${o.nextTrack == null ? '' : ' · next: ${o.nextTrack}'}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          const SizedBox(height: 24),
+          Text(
+            'Fair play: whenever a song ends, the next one comes from whoever '
+            'has had the least airtime.',
+            style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _art(Track t) => t.imageUrl == null
+      ? const Icon(Icons.music_note)
+      : Image.network(t.imageUrl!, width: 40, height: 40,
+          errorBuilder: (_, _, _) => const Icon(Icons.music_note));
+}
+
+class _NowPlayingCard extends StatelessWidget {
+  const _NowPlayingCard({required this.now, required this.waiting});
+  final NowInfo? now;
+  final bool waiting;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final n = now;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: n == null
+            ? Text(
+                waiting
+                    ? 'Connecting to the host…'
+                    : 'Nothing playing — add a song!',
+                style: theme.textTheme.titleMedium,
+              )
+            : Builder(builder: (context) {
+                final pos =
+                    n.positionAt(DateTime.now().millisecondsSinceEpoch);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        if (n.track.imageUrl != null)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: Image.network(n.track.imageUrl!,
+                                width: 56, height: 56,
+                                errorBuilder: (_, _, _) =>
+                                    const SizedBox(width: 56, height: 56)),
+                          ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(n.track.name,
+                                  style: theme.textTheme.titleMedium,
+                                  overflow: TextOverflow.ellipsis),
+                              Text(n.track.artists,
+                                  overflow: TextOverflow.ellipsis),
+                              Text('for ${n.memberName}',
+                                  style:
+                                      const TextStyle(color: Colors.white60)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(
+                        value: n.track.durationMs > 0
+                            ? (pos / n.track.durationMs).clamp(0.0, 1.0)
+                            : null),
+                    const SizedBox(height: 4),
+                    Text(
+                        '${formatMs(pos)} / ${formatMs(n.track.durationMs)}'
+                        '${n.paused ? '  (paused)' : ''}',
+                        style: const TextStyle(fontSize: 12)),
+                  ],
+                );
+              }),
+      ),
+    );
+  }
+}
