@@ -46,7 +46,12 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 - Delivery is at-least-once (push + inbox); every receiver de-dups on message `id`.
 - Every host→member message is a full personal snapshot (`MemberView`).
 - Fairness = least airtime first; airtime credited from actual playback
-  position deltas; late joiners start at the party minimum.
+  position deltas; idle members (empty queue) follow the party maximum and
+  late joiners start there (no banking credit while sitting out).
+- Spotify Development Mode (Feb 2026): search ≤ 10 results, 5 auth users,
+  no /users/{id}/playlists or batch endpoints. Member playlist access is via
+  pasted/shared links (`SpotifyLink`, `/playlists/{id}/items`, `/albums/{id}`,
+  `/tracks/{id}`) and the manifest's `share_target`.
 - Spotify client id is entered in the app (`HostSettings`, SharedPreferences);
   `--dart-define=SPOTIFY_CLIENT_ID` is only a default. Never commit one.
 - `lib/firebase_options.dart` holds the real fcm-switch Android app

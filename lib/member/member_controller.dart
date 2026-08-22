@@ -44,6 +44,15 @@ class MemberController extends ChangeNotifier {
   String? error;
   DateTime? lastStateAt;
 
+  /// Text shared into the page (Web Share Target from the Spotify app) or a
+  /// link in the URL; consumed once by the party screen.
+  String? _sharedText;
+  String? takeSharedText() {
+    final t = _sharedText;
+    _sharedText = null;
+    return t;
+  }
+
   bool _polling = false;
   bool _watchingVisibility = false;
   final _seen = SeenIds();
@@ -54,6 +63,10 @@ class MemberController extends ChangeNotifier {
     await identity.init();
     final prefs = await SharedPreferences.getInstance();
     final params = Uri.base.queryParameters;
+    final shared = [params['url'], params['text'], params['title']]
+        .whereType<String>()
+        .join(' ');
+    if (SpotifyLink.parse(shared) != null) _sharedText = shared;
     final joinParam = params['join'];
     if (joinParam != null && _uuidRe.hasMatch(joinParam)) {
       hostUuid = joinParam;
@@ -194,17 +207,39 @@ class MemberController extends ChangeNotifier {
       );
 
   Future<List<Track>> search(String query) async {
+    try {
+      return await SpotifyWebApi.search(await _token(), query);
+    } on SpotifyApiException catch (e) {
+      if (e.isUnauthorized) {
+        unawaited(_sendJoin());
+        throw StateError('Token expired; asked the host for a new one. Try again.');
+      }
+      rethrow;
+    }
+  }
+
+  Future<String> _token() async {
     final v = view;
     if (v == null || !v.hasValidToken) {
       unawaited(_sendJoin());
       throw StateError("Waiting for the host's Spotify token — try again in a moment");
     }
+    return v.token!;
+  }
+
+  /// Tracks behind a pasted/shared Spotify link (track, playlist or album).
+  Future<TrackCollection> openLink(SpotifyLink link) async {
     try {
-      return await SpotifyWebApi.search(v.token!, query);
+      return await SpotifyWebApi.fromLink(await _token(), link);
     } on SpotifyApiException catch (e) {
       if (e.isUnauthorized) {
         unawaited(_sendJoin());
         throw StateError('Token expired; asked the host for a new one. Try again.');
+      }
+      if (e.status == 404 || e.status == 403) {
+        throw StateError(
+            'Spotify would not hand out that ${link.type} — private playlists '
+            'and Spotify-made ones cannot be read. Make it public and try again.');
       }
       rethrow;
     }

@@ -9,8 +9,17 @@ A fair, shared Spotify queue for parties.
   member web page, where they search Spotify and build a personal queue. No
   install, no Spotify account needed.
 - **Fairness**: whenever a song ends, the next one is the head of the queue of
-  whoever has had the **least airtime** so far. A late joiner starts at the
-  party's current minimum, so they neither owe time nor hog the speakers.
+  whoever has had the **least airtime** so far. Sitting out doesn't bank time:
+  a member with an empty queue is kept at the party's maximum airtime, and a
+  late joiner starts there too — so adding songs after a long silence puts you
+  at the back of the line instead of giving you the speakers until you've
+  "caught up".
+- **Playlists**: members can't log in to Spotify themselves (Development Mode
+  allows only 5 authenticated users), but they can paste any Spotify link —
+  song, playlist, album (Share → Copy link in the Spotify app) — and Spot lists
+  its tracks to add. Installed to the Home Screen (Android), Spot is a Web
+  Share Target, so it appears in Spotify's Share menu directly. Private and
+  Spotify-curated playlists can't be read with the host token.
 
 Communication runs through the [fcm-switch](https://github.com/zond/analfapet/tree/main/functions)
 relay (FCM push + inbox pull) — the same Cloud Functions analfapet uses.
@@ -131,4 +140,3 @@ open it from there and join. Android Chrome works directly.
   a relay-through-host search mode would avoid even that.
 - A ~1–2 s gap between songs; queueing the next track into Spotify shortly
   before the end would make it gapless.
-- No reordering of one's own queue yet (remove + re-add).

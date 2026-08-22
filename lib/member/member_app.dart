@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/member_view.dart';
 import '../models/track.dart';
+import '../services/spotify_web_api.dart';
 import 'member_controller.dart';
 import 'qr_scanner_screen.dart';
 
@@ -228,6 +229,7 @@ class _PartyScreenState extends State<PartyScreen> {
   Timer? _ticker;
   Timer? _debounce;
   int _searchSeq = 0;
+  TrackCollection? _collection;
 
   MemberController get c => widget.controller;
 
@@ -238,6 +240,14 @@ class _PartyScreenState extends State<PartyScreen> {
       final now = c.view?.now;
       if (now != null && !now.paused && mounted) setState(() {});
     });
+    final shared = c.takeSharedText();
+    if (shared != null) {
+      final link = SpotifyLink.parse(shared);
+      if (link != null) {
+        _query.text = shared.trim();
+        WidgetsBinding.instance.addPostFrameCallback((_) => _openLink(link));
+      }
+    }
   }
 
   @override
@@ -249,8 +259,14 @@ class _PartyScreenState extends State<PartyScreen> {
   }
 
   /// Search as you type: wait for a pause in typing, ignore stale responses.
+  /// A pasted Spotify link opens that track/playlist/album instead.
   void _onQueryChanged(String text) {
     _debounce?.cancel();
+    final link = SpotifyLink.parse(text);
+    if (link != null) {
+      _debounce = Timer(const Duration(milliseconds: 200), () => _openLink(link));
+      return;
+    }
     final q = text.trim();
     if (q.length < 2) {
       if (_results.isNotEmpty || _searchError != null) {
@@ -264,10 +280,30 @@ class _PartyScreenState extends State<PartyScreen> {
     _debounce = Timer(const Duration(milliseconds: 450), _search);
   }
 
+  Future<void> _openLink(SpotifyLink link) async {
+    _debounce?.cancel();
+    final seq = ++_searchSeq;
+    setState(() {
+      _searching = true;
+      _searchError = null;
+      _results = const [];
+    });
+    try {
+      final col = await c.openLink(link);
+      if (mounted && seq == _searchSeq) setState(() => _collection = col);
+    } catch (e) {
+      if (mounted && seq == _searchSeq) setState(() => _searchError = '$e');
+    } finally {
+      if (mounted && seq == _searchSeq) setState(() => _searching = false);
+    }
+  }
+
   Future<void> _search() async {
     _debounce?.cancel();
     final q = _query.text.trim();
     if (q.isEmpty) return;
+    final link = SpotifyLink.parse(q);
+    if (link != null) return _openLink(link);
     final seq = ++_searchSeq;
     setState(() {
       _searching = true;
@@ -275,7 +311,12 @@ class _PartyScreenState extends State<PartyScreen> {
     });
     try {
       final r = await c.search(q);
-      if (mounted && seq == _searchSeq) setState(() => _results = r);
+      if (mounted && seq == _searchSeq) {
+        setState(() {
+          _results = r;
+          _collection = null;
+        });
+      }
     } catch (e) {
       if (mounted && seq == _searchSeq) setState(() => _searchError = '$e');
     } finally {
@@ -354,7 +395,7 @@ class _PartyScreenState extends State<PartyScreen> {
           TextField(
             controller: _query,
             decoration: InputDecoration(
-              labelText: 'Search Spotify',
+              labelText: 'Search Spotify — or paste a Spotify link',
               border: const OutlineInputBorder(),
               suffixIcon: _searching
                   ? const Padding(
@@ -375,6 +416,44 @@ class _PartyScreenState extends State<PartyScreen> {
               child: Text(_searchError!,
                   style: TextStyle(color: theme.colorScheme.error)),
             ),
+          if (_collection != null) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_collection!.kind}: ${_collection!.name} · '
+                      '${_collection!.tracks.length} tracks',
+                      style: theme.textTheme.titleSmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => setState(() {
+                      _collection = null;
+                      _query.clear();
+                    }),
+                  ),
+                ],
+              ),
+            ),
+            for (final t in _collection!.tracks)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: _art(t),
+                title: Text(t.name, overflow: TextOverflow.ellipsis),
+                subtitle: Text('${t.artists} · ${formatMs(t.durationMs)}',
+                    overflow: TextOverflow.ellipsis),
+                trailing: IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: () => _add(t)),
+                onTap: () => _add(t),
+              ),
+          ],
           for (final t in _results)
             ListTile(
               dense: true,
@@ -483,7 +562,11 @@ class _PartyScreenState extends State<PartyScreen> {
           const SizedBox(height: 24),
           Text(
             'Fair play: whenever a song ends, the next one comes from whoever '
-            'has had the least airtime.',
+            'has had the least airtime. Sitting out doesn\'t bank time: an '
+            'empty queue keeps pace with the leader.\n\n'
+            'Your own playlists: in the Spotify app, Share → Copy link on a '
+            'playlist, album or song and paste it here. Installed to the Home '
+            'Screen, Spot also shows up in Spotify\'s Share menu.',
             style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
           ),
         ],

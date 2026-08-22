@@ -40,14 +40,34 @@ void main() {
     expect(p.takeNext()!.$2.id, 'a2');
   });
 
-  test('late joiner starts at the party minimum', () {
+  test('late joiner starts at the party maximum', () {
     final p = Party();
     p.join('a', 'A', 1);
     p.join('b', 'B', 2);
+    p.enqueue('b', q('b1', 1), 2);
     p.credit('a', 300000);
     p.credit('b', 200000);
     final c = p.join('c', 'C', 3);
-    expect(c.playedMs, 200000);
+    expect(c.playedMs, 300000);
+  });
+
+  test('idle members follow the maximum instead of banking credit', () {
+    final p = Party();
+    p.join('a', 'A', 1);
+    p.join('b', 'B', 2);
+    p.join('c', 'C', 3);
+    p.enqueue('a', q('a1', 1), 4);
+    p.enqueue('a', q('a2', 1), 4);
+    p.enqueue('c', q('c1', 1), 4);
+    p.takeNext(); // a1 plays
+    p.credit('a', 600000);
+    expect(p.member('b')!.playedMs, 600000, reason: 'b idles → follows max');
+    expect(p.member('c')!.playedMs, 0, reason: 'c is queued → keeps its turn');
+    // a's own queue (a2) keeps a from being "idle" while a1 plays
+    expect(p.member('a')!.playedMs, 600000);
+    // b adds a song now: it goes behind c, not ahead of everyone
+    p.enqueue('b', q('b1', 1), 5);
+    expect(p.takeNext()!.$1.uuid, 'c');
   });
 
   test('duplicate enqueue ids are ignored, dequeue works', () {

@@ -66,6 +66,12 @@ class Member {
 /// (ties go to whoever joined first, which makes the start a plain round
 /// robin). Airtime is credited as tracks actually play, so skips only count
 /// what was heard.
+///
+/// Idle members don't bank credit: while a member's queue is empty their
+/// airtime is kept at the party maximum, so someone who adds songs after a
+/// long silence joins the back of the line instead of monopolising the
+/// speakers until they've "caught up". New joiners start at the maximum for
+/// the same reason.
 class Party {
   Party();
 
@@ -77,10 +83,8 @@ class Party {
   bool get isEmpty => _members.isEmpty;
   bool get hasQueued => _members.values.any((m) => m.queue.isNotEmpty);
 
-  /// Adds a member, or refreshes name/presence if already present.
-  ///
-  /// New members start at the lowest airtime already in the party, so they
-  /// neither owe time nor get to monopolise the speakers catching up.
+  /// Adds a member, or refreshes name/presence if already present. New
+  /// members start at the party's maximum airtime (back of the line).
   Member join(String uuid, String name, int nowMs) {
     final existing = _members[uuid];
     if (existing != null) {
@@ -88,12 +92,12 @@ class Party {
       existing.lastSeen = nowMs;
       return existing;
     }
-    final start = _members.isEmpty
-        ? 0
-        : _members.values.map((m) => m.playedMs).reduce(min);
     return _members[uuid] =
-        Member(uuid: uuid, name: name, joinedAt: nowMs, playedMs: start);
+        Member(uuid: uuid, name: name, joinedAt: nowMs, playedMs: maxPlayedMs);
   }
+
+  int get maxPlayedMs =>
+      _members.isEmpty ? 0 : _members.values.map((m) => m.playedMs).reduce(max);
 
   void touch(String uuid, int nowMs) => _members[uuid]?.lastSeen = nowMs;
 
@@ -151,9 +155,19 @@ class Party {
     return (best, best.queue.removeAt(0));
   }
 
+  /// Credits airtime to the member whose track is playing, and keeps every
+  /// idle member (empty queue, not the one playing) at the party maximum.
   void credit(String uuid, int deltaMs) {
     if (deltaMs <= 0) return;
-    _members[uuid]?.playedMs += deltaMs;
+    final m = _members[uuid];
+    if (m == null) return;
+    m.playedMs += deltaMs;
+    final top = maxPlayedMs;
+    for (final other in _members.values) {
+      if (other.uuid != uuid && other.queue.isEmpty && other.playedMs < top) {
+        other.playedMs = top;
+      }
+    }
   }
 
   Map<String, dynamic> toJson() =>
