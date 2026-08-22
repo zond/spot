@@ -39,4 +39,10 @@ abstract final class Config {
 
   /// Host re-sends state to members at least this often (clock re-sync).
   static const stateHeartbeat = Duration(seconds: 20);
+
+  /// Members ping the host this often while their page is visible…
+  static const memberPingInterval = Duration(minutes: 4);
+
+  /// …and the host stops pushing to anyone silent for this long.
+  static const listenerTimeout = Duration(minutes: 10);
 }

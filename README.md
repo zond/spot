@@ -10,10 +10,13 @@ A fair, shared Spotify queue for parties.
   install, no Spotify account needed.
 - **Fairness**: whenever a song ends, the next one is the head of the queue of
   whoever has had the **least airtime** so far. Sitting out doesn't bank time:
-  a member with an empty queue is kept at the party's maximum airtime, and a
-  late joiner starts there too — so adding songs after a long silence puts you
-  at the back of the line instead of giving you the speakers until you've
-  "caught up".
+  only people with songs queued (or playing) are party members; anyone whose
+  queue runs dry is dropped and re-admitted at the party's maximum airtime
+  when they next add a song — back of the line, not "catching up".
+- **Listeners**: everyone whose page has talked to the host recently gets
+  state pushes (member pages ping every 4 min while visible); after 10 silent
+  minutes the host stops pushing to them, and they get a fresh snapshot the
+  moment they come back.
 - **Playlists**: members can't log in to Spotify themselves (Development Mode
   allows only 5 authenticated users), but they can paste any Spotify link —
   song, playlist, album (Share → Copy link in the Spotify app) — and Spot lists

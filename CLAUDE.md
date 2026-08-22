@@ -46,8 +46,11 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 - Delivery is at-least-once (push + inbox); every receiver de-dups on message `id`.
 - Every host→member message is a full personal snapshot (`MemberView`).
 - Fairness = least airtime first; airtime credited from actual playback
-  position deltas; idle members (empty queue) follow the party maximum and
-  late joiners start there (no banking credit while sitting out).
+  position deltas. `Party` keeps *members* (something queued or playing) apart
+  from *listeners* (anyone heard from; push recipients for
+  `Config.listenerTimeout`). Idle members are dropped (`removeIdle`) and
+  re-admitted at the party maximum on their next enqueue; member pages ping
+  every `Config.memberPingInterval` while visible.
 - Spotify Development Mode (Feb 2026): search ≤ 10 results, 5 auth users,
   no /users/{id}/playlists or batch endpoints. Member playlist access is via
   pasted/shared links (`SpotifyLink`, `/playlists/{id}/items`, `/albums/{id}`,

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web/web.dart' as web;
 
+import '../config.dart';
 import '../models/member_view.dart';
 import '../models/party.dart';
 import '../models/track.dart';
@@ -56,6 +57,7 @@ class MemberController extends ChangeNotifier {
 
   bool _polling = false;
   bool _watchingVisibility = false;
+  Timer? _pingTimer;
   final _seen = SeenIds();
 
   String get displayHostName => view?.hostName ?? hostName ?? 'the host';
@@ -145,6 +147,7 @@ class MemberController extends ChangeNotifier {
       // (now, after being in the background, or on manual refresh).
       unawaited(_drainInbox());
       phase = MemberPhase.joined;
+      _startPinging();
     } catch (e) {
       error = e is StateError ? e.message : '$e';
       phase = MemberPhase.needName;
@@ -180,6 +183,8 @@ class MemberController extends ChangeNotifier {
   }
 
   Future<void> leave() async {
+    _pingTimer?.cancel();
+    _pingTimer = null;
     hostUuid = null;
     hostName = null;
     view = null;
@@ -207,12 +212,39 @@ class MemberController extends ChangeNotifier {
     web.document.addEventListener(
       'visibilitychange',
       ((web.Event _) {
-        if (web.document.visibilityState != 'visible') return;
+        if (web.document.visibilityState != 'visible') {
+          _pingTimer?.cancel();
+          _pingTimer = null;
+          return;
+        }
         unawaited(_checkVersion());
-        if (phase == MemberPhase.joined) unawaited(_drainInbox());
+        if (phase == MemberPhase.joined) {
+          unawaited(_drainInbox());
+          _startPinging();
+        }
       }).toJS,
     );
   }
+
+  /// "Still here" heartbeat while the page is visible, so the host keeps
+  /// pushing to us (it stops after [Config.listenerTimeout] of silence).
+  void _startPinging() {
+    unawaited(_send(MsgType.ping, {}));
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(
+        Config.memberPingInterval, (_) => unawaited(_send(MsgType.ping, {})));
+  }
+
+  /// Every message carries our uuid and name so the host can (re)admit us.
+  Future<void> _send(String type, Map<String, dynamic> body) =>
+      switchClient.send(
+        hostUuid!,
+        Message(type: type, body: {
+          'uuid': identity.uuid,
+          'name': identity.name,
+          ...body,
+        }).toData(),
+      );
 
   static const _versionKey = 'member_app_version';
   DateTime _lastVersionCheck = DateTime.fromMillisecondsSinceEpoch(0);
@@ -254,13 +286,7 @@ class MemberController extends ChangeNotifier {
     if (phase == MemberPhase.joined) await _sendJoin();
   }
 
-  Future<void> _sendJoin() => switchClient.send(
-        hostUuid!,
-        Message(
-          type: MsgType.join,
-          body: {'uuid': identity.uuid, 'name': identity.name},
-        ).toData(),
-      );
+  Future<void> _sendJoin() => _send(MsgType.join, {});
 
   Future<List<Track>> search(String query) async {
     try {
@@ -307,13 +333,7 @@ class MemberController extends ChangeNotifier {
 
   Future<void> enqueue(Track track) async {
     final item = QueueItem(id: const Uuid().v4(), track: track);
-    await switchClient.send(
-      hostUuid!,
-      Message(
-        type: MsgType.enqueue,
-        body: {'uuid': identity.uuid, 'item': item.toJson()},
-      ).toData(),
-    );
+    await _send(MsgType.enqueue, {'item': item.toJson()});
   }
 
   /// Applies the new order locally right away (so the drag doesn't snap
@@ -339,22 +359,11 @@ class MemberController extends ChangeNotifier {
       );
       notifyListeners();
     }
-    await switchClient.send(
-      hostUuid!,
-      Message(
-        type: MsgType.reorder,
-        body: {'uuid': identity.uuid, 'itemIds': itemIds},
-      ).toData(),
-    );
+    await _send(MsgType.reorder, {'itemIds': itemIds});
   }
 
-  Future<void> dequeue(String itemId) => switchClient.send(
-        hostUuid!,
-        Message(
-          type: MsgType.dequeue,
-          body: {'uuid': identity.uuid, 'itemId': itemId},
-        ).toData(),
-      );
+  Future<void> dequeue(String itemId) =>
+      _send(MsgType.dequeue, {'itemId': itemId});
 
   void _handleData(Map<String, dynamic> data) {
     final m = Message.fromData(data);

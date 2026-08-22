@@ -265,6 +265,7 @@ class HostController extends ChangeNotifier {
       _expectedUri = null;
       current = null;
       currentMember = null;
+      party.removeIdle();
       status = 'Waiting for songs';
       unawaited(HostForeground.update(status));
       await _persistParty();
@@ -275,6 +276,7 @@ class HostController extends ChangeNotifier {
     final (member, item) = next;
     current = item;
     currentMember = member;
+    party.removeIdle(playing: member.uuid);
     _expectedUri = item.track.uri;
     _sawPlaying = false;
     _lastPos = 0;
@@ -424,6 +426,7 @@ class HostController extends ChangeNotifier {
 
   void removeQueued(String memberUuid, String itemId) {
     if (party.dequeue(memberUuid, itemId)) {
+      party.removeIdle(playing: currentMember?.uuid);
       unawaited(_persistParty());
       notifyListeners();
       broadcast();
@@ -473,15 +476,19 @@ class HostController extends ChangeNotifier {
     final now = DateTime.now().millisecondsSinceEpoch;
     final uuid = m.body['uuid'];
     if (uuid is! String) return;
+    final name = (m.body['name'] as String?)?.trim();
+    // Any message proves the sender is around (and may rename them).
+    final wasKnown = party.listener(uuid) != null;
+    party.touch(uuid, name, now);
     switch (m.type) {
       case MsgType.join:
-        final name = (m.body['name'] as String?)?.trim();
-        if (name == null || name.isEmpty) return;
-        party.join(uuid, name, now);
         unawaited(_persistParty());
         notifyListeners();
         unawaited(_sendView(uuid));
-        _maybePlayNext();
+      case MsgType.ping:
+        // A returning listener needs a snapshot right away.
+        if (!wasKnown) unawaited(_sendView(uuid));
+        notifyListeners();
       case MsgType.enqueue:
         final itemJson = m.body['item'];
         if (itemJson is! Map<String, dynamic>) return;
@@ -491,7 +498,7 @@ class HostController extends ChangeNotifier {
         } catch (_) {
           return;
         }
-        if (party.enqueue(uuid, item, now)) {
+        if (party.enqueue(uuid, name, item, now)) {
           unawaited(_persistParty());
           notifyListeners();
           _maybePlayNext();
@@ -501,6 +508,7 @@ class HostController extends ChangeNotifier {
         final itemId = m.body['itemId'];
         if (itemId is! String) return;
         if (party.dequeue(uuid, itemId)) {
+          party.removeIdle(playing: currentMember?.uuid);
           unawaited(_persistParty());
           notifyListeners();
           broadcast();
@@ -528,7 +536,13 @@ class HostController extends ChangeNotifier {
 
   Future<void> _flushBroadcast() async {
     _broadcastDebounce = null;
-    await Future.wait(party.members.map((m) => _sendView(m.uuid)));
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Only push to pages heard from recently; forget the rest.
+    if (party.pruneListeners(now, Config.listenerTimeout * 6) > 0) {
+      unawaited(_persistParty());
+    }
+    final recipients = party.recipients(now, Config.listenerTimeout).toList();
+    await Future.wait(recipients.map((l) => _sendView(l.uuid)));
   }
 
   Future<void> _sendView(String uuid) async {
@@ -538,14 +552,15 @@ class HostController extends ChangeNotifier {
       await switchClient.send(
           uuid, Message(type: MsgType.state, body: view.toJson()).toData());
     } catch (e) {
-      lastError = 'Send to ${party.member(uuid)?.name}: $e';
+      lastError = 'Send to ${party.listener(uuid)?.name}: $e';
       notifyListeners();
     }
   }
 
   MemberView? viewFor(String uuid) {
+    if (party.listener(uuid) == null) return null;
+    // Not an active member = nothing queued, airtime at the party maximum.
     final me = party.member(uuid);
-    if (me == null) return null;
     final now = DateTime.now().millisecondsSinceEpoch;
     final cur = current;
     final curMember = currentMember;
@@ -563,8 +578,8 @@ class HostController extends ChangeNotifier {
               atMs: now,
               paused: paused,
             ),
-      myPlayedMs: me.playedMs,
-      myQueue: List.of(me.queue),
+      myPlayedMs: me?.playedMs ?? party.maxPlayedMs,
+      myQueue: me == null ? const [] : List.of(me.queue),
       others: [
         for (final m in party.members)
           if (m.uuid != uuid)

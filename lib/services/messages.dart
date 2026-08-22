@@ -17,6 +17,9 @@ abstract final class MsgType {
   /// {uuid, itemIds: [...]} — full desired order of the member's queue.
   static const reorder = 'reorder';
 
+  /// {uuid, name} — "still here"; keeps the member among push recipients.
+  static const ping = 'ping';
+
   // host -> member
   /// MemberView
   static const state = 'state';

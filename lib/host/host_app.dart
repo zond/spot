@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config.dart';
+
 import '../models/party.dart';
 import '../models/track.dart';
 import '../services/identity.dart';
@@ -230,7 +232,8 @@ class _HostSetupScreenState extends State<HostSetupScreen> {
                 onPressed: c.resetParty,
                 icon: const Icon(Icons.delete_outline),
                 label: Text(
-                    'Forget saved party (${c.party.members.length} members)'),
+                    'Forget saved party (${c.party.members.length} queued, '
+                    '${c.party.listeners.length} known)'),
               ),
             const SizedBox(height: 24),
             const Text(
@@ -471,14 +474,26 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                   onPressed: c.clearError),
             ),
           const SizedBox(height: 16),
-          Text('Members', style: theme.textTheme.titleMedium),
+          Text('Members with songs queued', style: theme.textTheme.titleMedium),
           if (members.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('Nobody has joined yet.',
+              child: Text('Nobody has queued anything yet.',
                   style: TextStyle(color: Colors.white60)),
             ),
           for (final m in members) _MemberTile(member: m, controller: c),
+          const SizedBox(height: 12),
+          Builder(builder: (context) {
+            final now = DateTime.now().millisecondsSinceEpoch;
+            final live = c.party.recipients(now, Config.listenerTimeout).toList();
+            return Text(
+              live.isEmpty
+                  ? 'Nobody is looking at the page right now.'
+                  : 'Listening now (${live.length}): '
+                      '${live.map((l) => l.name).join(', ')}',
+              style: const TextStyle(fontSize: 12, color: Colors.white60),
+            );
+          }),
         ],
       ),
     );

@@ -59,6 +59,24 @@ class Member {
   }
 }
 
+/// Someone whose page talks to the host: gets state pushes while recently
+/// seen. Separate from [Member] so idle people don't clutter the party.
+class Listener {
+  Listener({required this.uuid, required this.name, required this.lastSeen});
+  final String uuid;
+  String name;
+  int lastSeen;
+
+  Map<String, dynamic> toJson() =>
+      {'uuid': uuid, 'name': name, 'lastSeen': lastSeen};
+
+  factory Listener.fromJson(Map<String, dynamic> j) => Listener(
+        uuid: j['uuid'] as String,
+        name: j['name'] as String,
+        lastSeen: (j['lastSeen'] as num?)?.toInt() ?? 0,
+      );
+}
+
 /// Host-side party state and the fairness policy.
 ///
 /// Fairness is "least airtime first": whenever a track ends, the next track is
@@ -67,45 +85,64 @@ class Member {
 /// robin). Airtime is credited as tracks actually play, so skips only count
 /// what was heard.
 ///
-/// Idle members don't bank credit: while a member's queue is empty their
-/// airtime is kept at the party maximum, so someone who adds songs after a
-/// long silence joins the back of the line instead of monopolising the
-/// speakers until they've "caught up". New joiners start at the maximum for
-/// the same reason.
+/// Only people with something queued (or playing) are *members*. Everyone who
+/// has talked to the host is a *listener* and receives state pushes while
+/// recently seen. Idle people are not kept as members: an idle member's state
+/// is fully implied (empty queue, airtime = party maximum), so dropping them
+/// and re-admitting them at the maximum when they next queue a song is
+/// indistinguishable from keeping them — and it keeps the host list honest.
 class Party {
   Party();
 
-  /// Insertion order = join order (LinkedHashMap).
+  /// Insertion order = order of (re)joining the active set (LinkedHashMap).
   final Map<String, Member> _members = {};
+  final Map<String, Listener> _listeners = {};
 
   Iterable<Member> get members => _members.values;
+  Iterable<Listener> get listeners => _listeners.values;
   Member? member(String uuid) => _members[uuid];
-  bool get isEmpty => _members.isEmpty;
+  Listener? listener(String uuid) => _listeners[uuid];
+  bool get isEmpty => _members.isEmpty && _listeners.isEmpty;
   bool get hasQueued => _members.values.any((m) => m.queue.isNotEmpty);
-
-  /// Adds a member, or refreshes name/presence if already present. New
-  /// members start at the party's maximum airtime (back of the line).
-  Member join(String uuid, String name, int nowMs) {
-    final existing = _members[uuid];
-    if (existing != null) {
-      existing.name = name;
-      existing.lastSeen = nowMs;
-      return existing;
-    }
-    return _members[uuid] =
-        Member(uuid: uuid, name: name, joinedAt: nowMs, playedMs: maxPlayedMs);
-  }
 
   int get maxPlayedMs =>
       _members.isEmpty ? 0 : _members.values.map((m) => m.playedMs).reduce(max);
 
-  void touch(String uuid, int nowMs) => _members[uuid]?.lastSeen = nowMs;
+  /// Records that [uuid] is around (any message does this) and keeps the
+  /// display name current.
+  Listener touch(String uuid, String? name, int nowMs) {
+    final l = _listeners[uuid];
+    final n = (name ?? l?.name ?? '').trim();
+    if (l == null) {
+      return _listeners[uuid] =
+          Listener(uuid: uuid, name: n.isEmpty ? 'Someone' : n, lastSeen: nowMs);
+    }
+    l.lastSeen = nowMs;
+    if (n.isNotEmpty) l.name = n;
+    _members[uuid]?.name = l.name;
+    return l;
+  }
 
-  /// Appends [item] to the member's queue. Returns false if the member is
-  /// unknown or the item id was already queued (duplicate delivery).
-  bool enqueue(String uuid, QueueItem item, int nowMs) {
-    final m = _members[uuid];
-    if (m == null) return false;
+  /// Listeners heard from within [maxAge] — the ones worth pushing to.
+  Iterable<Listener> recipients(int nowMs, Duration maxAge) => _listeners.values
+      .where((l) => nowMs - l.lastSeen <= maxAge.inMilliseconds);
+
+  /// Forgets listeners silent for longer than [maxAge]. Members are kept
+  /// regardless: their queued songs still play.
+  int pruneListeners(int nowMs, Duration maxAge) {
+    final before = _listeners.length;
+    _listeners.removeWhere((uuid, l) =>
+        nowMs - l.lastSeen > maxAge.inMilliseconds && !_members.containsKey(uuid));
+    return before - _listeners.length;
+  }
+
+  /// Appends [item] to the member's queue, admitting them to the active set
+  /// (at the party's maximum airtime — back of the line) if needed. Returns
+  /// false if the item id was already queued (duplicate delivery).
+  bool enqueue(String uuid, String? name, QueueItem item, int nowMs) {
+    final l = touch(uuid, name, nowMs);
+    final m = _members[uuid] ??=
+        Member(uuid: uuid, name: l.name, joinedAt: nowMs, playedMs: maxPlayedMs);
     if (m.queue.any((q) => q.id == item.id)) return false;
     m.queue.add(item);
     m.lastSeen = nowMs;
@@ -128,8 +165,7 @@ class Party {
     if (m == null) return false;
     final byId = {for (final q in m.queue) q.id: q};
     final next = <QueueItem>[
-      for (final id in itemIds)
-        ?byId.remove(id),
+      for (final id in itemIds) ?byId.remove(id),
       ...m.queue.where((q) => byId.containsKey(q.id)),
     ];
     var changed = next.length != m.queue.length;
@@ -155,29 +191,35 @@ class Party {
     return (best, best.queue.removeAt(0));
   }
 
-  /// Credits airtime to the member whose track is playing, and keeps every
-  /// idle member (empty queue, not the one playing) at the party maximum.
-  void credit(String uuid, int deltaMs) {
-    if (deltaMs <= 0) return;
-    final m = _members[uuid];
-    if (m == null) return;
-    m.playedMs += deltaMs;
-    final top = maxPlayedMs;
-    for (final other in _members.values) {
-      if (other.uuid != uuid && other.queue.isEmpty && other.playedMs < top) {
-        other.playedMs = top;
-      }
-    }
+  /// Drops members with nothing queued, except [playing] (whose current
+  /// track is not in their queue). Their airtime is implied (= maximum) and
+  /// restored on their next enqueue.
+  int removeIdle({String? playing}) {
+    final before = _members.length;
+    _members.removeWhere((uuid, m) => m.queue.isEmpty && uuid != playing);
+    return before - _members.length;
   }
 
-  Map<String, dynamic> toJson() =>
-      {'members': _members.values.map((m) => m.toJson()).toList()};
+  /// Credits airtime to the member whose track is playing.
+  void credit(String uuid, int deltaMs) {
+    if (deltaMs <= 0) return;
+    _members[uuid]?.playedMs += deltaMs;
+  }
+
+  Map<String, dynamic> toJson() => {
+        'members': _members.values.map((m) => m.toJson()).toList(),
+        'listeners': _listeners.values.map((l) => l.toJson()).toList(),
+      };
 
   factory Party.fromJson(Map<String, dynamic> j) {
     final p = Party();
     for (final m in (j['members'] as List? ?? const [])) {
       final member = Member.fromJson(m as Map<String, dynamic>);
       p._members[member.uuid] = member;
+    }
+    for (final l in (j['listeners'] as List? ?? const [])) {
+      final listener = Listener.fromJson(l as Map<String, dynamic>);
+      p._listeners[listener.uuid] = listener;
     }
     return p;
   }
