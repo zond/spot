@@ -336,6 +336,41 @@ class MemberController extends ChangeNotifier {
     await _send(MsgType.enqueue, {'item': item.toJson()});
   }
 
+  /// Adds a whole playlist as one queue entry; the host reads it live.
+  Future<void> enqueuePlaylist(String id, String name, int total) async {
+    final item = QueueItem(
+        id: const Uuid().v4(),
+        playlist: PlaylistRef(id: id, name: name, total: total));
+    await _send(MsgType.enqueue, {'item': item.toJson()});
+  }
+
+  Future<void> setModes({bool? shuffle, bool? repeat}) async {
+    final v = view;
+    if (v != null) {
+      view = MemberView(
+        hostName: v.hostName,
+        token: v.token,
+        tokenExpiresAt: v.tokenExpiresAt,
+        now: v.now,
+        myPlayedMs: v.myPlayedMs,
+        myQueue: v.myQueue,
+        others: v.others,
+        sentAt: v.sentAt,
+        notice: v.notice,
+        noticeAt: v.noticeAt,
+        pausedReason: v.pausedReason,
+        shuffle: shuffle ?? v.shuffle,
+        repeat: repeat ?? v.repeat,
+        cursor: v.cursor,
+      );
+      notifyListeners();
+    }
+    await _send(MsgType.modes, {
+      'shuffle': ?shuffle,
+      'repeat': ?repeat,
+    });
+  }
+
   /// Applies the new order locally right away (so the drag doesn't snap
   /// back) and tells the host; the host's next snapshot confirms it.
   Future<void> reorder(List<String> itemIds) async {
@@ -356,6 +391,12 @@ class MemberController extends ChangeNotifier {
         myQueue: next,
         others: v.others,
         sentAt: v.sentAt,
+        notice: v.notice,
+        noticeAt: v.noticeAt,
+        pausedReason: v.pausedReason,
+        shuffle: v.shuffle,
+        repeat: v.repeat,
+        cursor: v.cursor,
       );
       notifyListeners();
     }

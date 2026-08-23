@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/member_view.dart';
 import '../models/track.dart';
@@ -434,6 +435,21 @@ class _PartyScreenState extends State<PartyScreen> {
     if (yes == true) await c.skip(n.track.id);
   }
 
+  Future<void> _addPlaylistEntry(TrackCollection col) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await c.enqueuePlaylist(col.id!, col.name, col.total);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Added playlist "${col.name}" as one entry '
+            '(${col.total} songs)',
+          ),
+        ),
+      );
+  }
+
   Future<void> _add(Track t) async {
     try {
       await c.enqueue(t);
@@ -645,6 +661,17 @@ class _PartyScreenState extends State<PartyScreen> {
                 ),
                 onTap: () => openInSpotify(t),
               ),
+            if (_collection!.kind == 'Playlist' && _collection!.id != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                child: FilledButton.tonalIcon(
+                  onPressed: () => _addPlaylistEntry(_collection!),
+                  icon: const Icon(Icons.playlist_add, size: 18),
+                  label: Text(
+                    'Add playlist as entry (${_collection!.total} songs)',
+                  ),
+                ),
+              ),
             if (!_collection!.complete)
               Row(
                 children: [
@@ -717,6 +744,31 @@ class _PartyScreenState extends State<PartyScreen> {
                 onPressed: _rename,
                 icon: const Icon(Icons.edit, size: 18),
               ),
+              IconButton(
+                tooltip: v?.shuffle == true
+                    ? 'Shuffle on: every song (also inside playlists) is '
+                          'equally likely'
+                    : 'Shuffle off: play in order',
+                visualDensity: VisualDensity.compact,
+                isSelected: v?.shuffle == true,
+                selectedIcon: const Icon(Icons.shuffle_on, size: 20),
+                onPressed: v == null
+                    ? null
+                    : () => c.setModes(shuffle: !v.shuffle),
+                icon: const Icon(Icons.shuffle, size: 20),
+              ),
+              IconButton(
+                tooltip: v?.repeat == true
+                    ? 'Repeat on: entries stay and wrap around'
+                    : 'Repeat off: entries are removed when played',
+                visualDensity: VisualDensity.compact,
+                isSelected: v?.repeat == true,
+                selectedIcon: const Icon(Icons.repeat_on, size: 20),
+                onPressed: v == null
+                    ? null
+                    : () => c.setModes(repeat: !v.repeat),
+                icon: const Icon(Icons.repeat, size: 20),
+              ),
             ],
           ),
           if (v == null || v.myQueue.isEmpty)
@@ -743,6 +795,7 @@ class _PartyScreenState extends State<PartyScreen> {
                     key: ValueKey(v.myQueue[i].id),
                     dense: true,
                     contentPadding: EdgeInsets.zero,
+                    selected: v.repeat && !v.shuffle && i == v.cursor,
                     leading: ReorderableDragStartListener(
                       index: i,
                       child: Row(
@@ -750,17 +803,24 @@ class _PartyScreenState extends State<PartyScreen> {
                         children: [
                           const Icon(Icons.drag_handle, color: Colors.white54),
                           const SizedBox(width: 6),
-                          _art(v.myQueue[i].track),
+                          v.myQueue[i].playlist != null
+                              ? const Icon(Icons.queue_music)
+                              : _art(v.myQueue[i].track!),
                         ],
                       ),
                     ),
                     title: Text(
-                      v.myQueue[i].track.name,
+                      v.myQueue[i].title,
                       overflow: TextOverflow.ellipsis,
                     ),
                     subtitle: Text(
-                      '${v.myQueue[i].track.artists} · '
-                      '${formatMs(v.myQueue[i].track.durationMs)}',
+                      v.myQueue[i].playlist != null
+                          ? 'Playlist · '
+                                '${v.shuffle ? v.myQueue[i].playlist!.playedIds.length : v.myQueue[i].playlist!.nextIndex}'
+                                ' / ${v.myQueue[i].playlist!.total} played'
+                                '${v.repeat ? '' : ' · removed when done'}'
+                          : '${v.myQueue[i].track!.artists} · '
+                                '${formatMs(v.myQueue[i].track!.durationMs)}',
                       overflow: TextOverflow.ellipsis,
                     ),
                     trailing: IconButton(
@@ -768,7 +828,14 @@ class _PartyScreenState extends State<PartyScreen> {
                       icon: const Icon(Icons.remove_circle_outline),
                       onPressed: () => c.dequeue(v.myQueue[i].id),
                     ),
-                    onTap: () => openInSpotify(v.myQueue[i].track),
+                    onTap: v.myQueue[i].track == null
+                        ? () => launchUrl(
+                            Uri.parse(
+                              'https://open.spotify.com/playlist/${v.myQueue[i].playlist!.id}',
+                            ),
+                            mode: LaunchMode.externalApplication,
+                          )
+                        : () => openInSpotify(v.myQueue[i].track!),
                   ),
               ],
             ),
@@ -805,9 +872,12 @@ class _PartyScreenState extends State<PartyScreen> {
             'empty queue keeps pace with the leader. Anyone may skip a song — '
             'the remaining time goes on the skipper\'s airtime.\n\n'
             'Your own playlists: in the Spotify app, Share → Copy link on a '
-            'playlist, album or song and paste it here. Installed to the Home '
-            'Screen, Spot also shows up in Spotify\'s Share menu. Tap any '
-            'song to open it in Spotify.',
+            'playlist, album or song and paste it here — add songs from it, or '
+            'the whole playlist as one entry that plays all its songs (one per '
+            'turn) and follows your edits in Spotify. Shuffle gives every song, '
+            'loose or in a playlist, the same chance; repeat keeps entries and '
+            'wraps around. Installed to the Home Screen, Spot also shows up in '
+            'Spotify\'s Share menu. Tap any song to open it in Spotify.',
             style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
           ),
           const InstallHint(),

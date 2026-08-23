@@ -32,9 +32,19 @@ A fair, shared Spotify queue for parties.
 - **Playlists**: members can't log in to Spotify themselves (Development Mode
   allows only 5 authenticated users), but they can paste any Spotify link —
   song, playlist, album (Share → Copy link in the Spotify app) — and Spot lists
-  its tracks to add. Installed to the Home Screen (Android), Spot is a Web
-  Share Target, so it appears in Spotify's Share menu directly. Private and
-  Spotify-curated playlists can't be read with the host token.
+  its tracks to add, or adds the **whole playlist as one queue entry**: it
+  plays all its songs (one per turn) before the queue moves past it, and the
+  host reads the playlist live, so edits in Spotify are picked up. Installed
+  to the Home Screen (Android), Spot is a Web Share Target, so it appears in
+  Spotify's Share menu directly. Private and Spotify-curated playlists can't
+  be read with the host token.
+- **Shuffle / repeat** (per member): shuffle picks randomly with every song —
+  loose or inside a playlist — equally likely (a 40-song playlist is 40
+  tickets); repeat keeps entries after playing them and wraps around (a
+  finished playlist restarts). Shuffle + repeat plays everything once per
+  cycle before anything repeats. In-order playlist progress is an index (so
+  reordering the playlist in Spotify shifts what comes next); shuffled
+  progress remembers played track ids (robust to edits).
 
 Communication runs through the [fcm-switch](https://github.com/zond/analfapet/tree/main/functions)
 relay (FCM push + inbox pull) — the same Cloud Functions analfapet uses.

@@ -24,6 +24,9 @@ abstract final class MsgType {
   /// charged to the skipper's airtime.
   static const skip = 'skip';
 
+  /// {uuid, name, shuffle?, repeat?} — queue playback modes.
+  static const modes = 'modes';
+
   // host -> member
   /// MemberView
   static const state = 'state';

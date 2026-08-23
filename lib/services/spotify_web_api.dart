@@ -153,6 +153,44 @@ abstract final class SpotifyWebApi {
 
   static int _playlistPageSize = 50;
 
+  /// Raw page of playlist items from [offset]: (offset, Track) for playable
+  /// tracks, the number of raw items the page held, and the playlist total.
+  static Future<({List<(int, Track)> items, int fetched, int total})>
+      playlistPage(String token, String id, int offset, {int limit = 20}) async {
+    var lim = limit > _playlistPageSize ? _playlistPageSize : limit;
+    while (true) {
+      try {
+        final page = await _get(
+            token,
+            Uri.https('api.spotify.com', '/v1/playlists/$id/items', {
+              'limit': '$lim',
+              'offset': '$offset',
+            }));
+        final raw = page['items'] as List? ?? const [];
+        final items = <(int, Track)>[];
+        for (var i = 0; i < raw.length; i++) {
+          final t = ((raw[i] as Map)['track'] ?? raw[i]['item']) as Map?;
+          if (t == null || t['id'] == null || (t['type'] ?? 'track') != 'track') {
+            continue;
+          }
+          items.add((offset + i, Track.fromSpotify(t.cast<String, dynamic>())));
+        }
+        return (
+          items: items,
+          fetched: raw.length,
+          total: (page['total'] as num?)?.toInt() ?? (offset + raw.length),
+        );
+      } on SpotifyApiException catch (e) {
+        if (e.status == 400 && lim > 10 && e.body.contains('limit')) {
+          _playlistPageSize = 10;
+          lim = 10;
+          continue;
+        }
+        rethrow;
+      }
+    }
+  }
+
   /// Fetches the next page of a playlist into [col]. Returns false when there
   /// was nothing more to load.
   static Future<bool> loadMore(String token, TrackCollection col) async {

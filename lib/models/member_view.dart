@@ -96,6 +96,9 @@ class MemberView {
     this.notice,
     this.noticeAt = 0,
     this.pausedReason,
+    this.shuffle = false,
+    this.repeat = false,
+    this.cursor = 0,
   });
 
   final String hostName;
@@ -117,6 +120,11 @@ class MemberView {
   /// (another device, or the Spotify app on the host phone): the reason.
   final String? pausedReason;
 
+  /// My queue modes and in-order position.
+  final bool shuffle;
+  final bool repeat;
+  final int cursor;
+
   bool get hasValidToken =>
       token != null && tokenExpiresAt > DateTime.now().millisecondsSinceEpoch;
 
@@ -132,6 +140,9 @@ class MemberView {
         if (notice != null) 'n': notice,
         if (notice != null) 'na': noticeAt,
         if (pausedReason != null) 'pr': pausedReason,
+        if (shuffle) 'sh': true,
+        if (repeat) 'rp': true,
+        if (cursor > 0) 'cu': cursor,
       };
 
   factory MemberView.fromJson(Map<String, dynamic> j) => MemberView(
@@ -152,5 +163,8 @@ class MemberView {
         notice: j['n'] as String?,
         noticeAt: (j['na'] as num?)?.toInt() ?? 0,
         pausedReason: j['pr'] as String?,
+        shuffle: j['sh'] == true,
+        repeat: j['rp'] == true,
+        cursor: (j['cu'] as num?)?.toInt() ?? 0,
       );
 }

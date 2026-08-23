@@ -414,7 +414,7 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
           const SizedBox(height: 12),
           Card(
             child: InkWell(
-              onTap: now == null ? null : () => openInSpotify(now.track),
+              onTap: now == null ? null : () => openInSpotify(now.track!),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: now == null
@@ -424,11 +424,11 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                         children: [
                           Row(
                             children: [
-                              if (now.track.imageUrl != null)
+                              if (now.track!.imageUrl != null)
                                 Padding(
                                   padding: const EdgeInsets.only(right: 12),
                                   child: Image.network(
-                                    now.track.imageUrl!,
+                                    now.track!.imageUrl!,
                                     width: 56,
                                     height: 56,
                                     errorBuilder: (_, _, _) =>
@@ -440,12 +440,12 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      now.track.name,
+                                      now.track!.name,
                                       style: theme.textTheme.titleMedium,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     Text(
-                                      now.track.artists,
+                                      now.track!.artists,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     Text(
@@ -625,7 +625,9 @@ class _MemberTile extends StatelessWidget {
       ),
       title: Text(member.name),
       subtitle: Text(
-        'airtime ${formatMs(controller.airtimeOf(member))} · ${member.queue.length} queued',
+        'airtime ${formatMs(controller.airtimeOf(member))} · '
+        '${member.queue.length} entr${member.queue.length == 1 ? 'y' : 'ies'}'
+        '${member.shuffle ? ' · shuffle' : ''}${member.repeat ? ' · repeat' : ''}',
       ),
       children: [
         if (member.queue.isEmpty)
@@ -639,17 +641,25 @@ class _MemberTile extends StatelessWidget {
         for (final item in member.queue)
           ListTile(
             dense: true,
-            leading: item.track.imageUrl == null
-                ? const Icon(Icons.music_note)
-                : Image.network(
-                    item.track.imageUrl!,
-                    width: 40,
-                    height: 40,
-                    errorBuilder: (_, _, _) => const Icon(Icons.music_note),
-                  ),
-            title: Text(item.track.name, overflow: TextOverflow.ellipsis),
+            selected: !member.shuffle &&
+                member.queue.indexOf(item) == member.cursor &&
+                member.repeat,
+            leading: item.playlist != null
+                ? const Icon(Icons.queue_music)
+                : item.track!.imageUrl == null
+                    ? const Icon(Icons.music_note)
+                    : Image.network(
+                        item.track!.imageUrl!,
+                        width: 40,
+                        height: 40,
+                        errorBuilder: (_, _, _) => const Icon(Icons.music_note),
+                      ),
+            title: Text(item.title, overflow: TextOverflow.ellipsis),
             subtitle: Text(
-              '${item.track.artists} · ${formatMs(item.track.durationMs)}',
+              item.playlist != null
+                  ? 'Playlist · ${member.shuffle ? item.playlist!.playedIds.length : item.playlist!.nextIndex}'
+                      ' / ${item.playlist!.total} played'
+                  : '${item.track!.artists} · ${formatMs(item.track!.durationMs)}',
               overflow: TextOverflow.ellipsis,
             ),
             trailing: IconButton(
@@ -657,7 +667,7 @@ class _MemberTile extends StatelessWidget {
               icon: const Icon(Icons.remove_circle_outline),
               onPressed: () => controller.removeQueued(member.uuid, item.id),
             ),
-            onTap: () => openInSpotify(item.track),
+            onTap: item.track == null ? null : () => openInSpotify(item.track!),
           ),
       ],
     );

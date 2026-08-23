@@ -24,7 +24,9 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 - `lib/main.dart` — platform switch with conditional imports (`host/` only on
   io, `member/` only on web). Keep web-only code (`package:web`, `dart:ui_web`,
   JS interop) under `lib/member/`, Android-only plugins under `lib/host/`.
-- `lib/models/` — `Track`, `Party` (state + least-airtime policy), `MemberView`.
+- `lib/models/` — `Track`, `Party` (state + least-airtime policy; queue entries are
+  songs or `PlaylistRef`s, per-member shuffle/repeat/cursor; `plan`/`commit` are
+  pure, the host resolves playlist entries via the Web API), `MemberView`.
 - `lib/services/` — `Identity`, `SwitchClient`, `Message`/`SeenIds`, `SpotifyWebApi`.
 - `lib/host/` — `SpotifyAuth` (PKCE), `AppRemotePlayer`, `HostController`,
   `HostForeground`, `HostPush`, `host_app.dart` (screens).

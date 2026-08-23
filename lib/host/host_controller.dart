@@ -50,6 +50,7 @@ class HostController extends ChangeNotifier {
 
   Party party = Party();
   HostPhase phase = HostPhase.idle;
+  final Random _rng = Random();
   String? notice;
   int noticeAt = 0;
 
@@ -292,38 +293,118 @@ class HostController extends ChangeNotifier {
     unawaited(_playNext());
   }
 
+  /// Picks the next member (least airtime) and resolves their next entry to
+  /// a song: loose songs directly, playlist entries by reading the playlist
+  /// live (in order, or a random not-yet-played song when shuffled).
   Future<void> _playNext() async {
     _endCheck?.cancel();
     _startTimeout?.cancel();
-    final next = party.takeNext();
-    if (next == null) {
-      _expectedUri = null;
-      current = null;
-      currentMember = null;
-      party.removeIdle();
-      status = 'Waiting for songs';
-      unawaited(HostForeground.update(status));
-      await _persistParty();
-      notifyListeners();
-      broadcast();
-      return;
+    for (final member in party.candidates()) {
+      var guard = 0;
+      while (guard++ < 8) {
+        final entry = party.plan(member, _rng);
+        if (entry == null) break;
+        Track? track;
+        var done = false;
+        if (entry.track != null) {
+          track = entry.track;
+        } else {
+          try {
+            final r = await _fromPlaylist(member, entry.playlist!);
+            if (r == null) {
+              done = true;
+            } else {
+              track = r.$1;
+              done = r.$2;
+            }
+          } catch (e) {
+            lastError = 'Playlist "${entry.playlist!.name}": $e';
+            notifyListeners();
+            break; // this member's turn fails; try the next member
+          }
+        }
+        if (track == null) {
+          // Playlist offered nothing (empty, all unplayable, or finished).
+          party.commit(member, entry, playlistDone: true);
+          if (member.repeat) party.dequeue(member.uuid, entry.id);
+          continue;
+        }
+        party.commit(member, entry, playlistDone: done);
+        await _startTrack(member, entry, track);
+        return;
+      }
     }
-    final (member, item) = next;
-    current = item;
+    _expectedUri = null;
+    current = null;
+    currentMember = null;
+    party.removeIdle();
+    status = 'Waiting for songs';
+    unawaited(HostForeground.update(status));
+    await _persistParty();
+    notifyListeners();
+    broadcast();
+  }
+
+  Future<void> _startTrack(Member member, QueueItem entry, Track track) async {
+    current = QueueItem(id: '${entry.id}:${track.id}', track: track);
     currentMember = member;
     party.removeIdle(playing: member.uuid);
-    _expectedUri = item.track.uri;
+    _expectedUri = track.uri;
     _sawPlaying = false;
     _lastPos = 0;
     _positionMs = 0;
     _positionAt = DateTime.now();
     paused = false;
-    _durationMs = item.track.durationMs;
+    _durationMs = track.durationMs;
     _startAttempts = 0;
     await _persistParty();
     notifyListeners();
     await _issuePlay();
     broadcast();
+  }
+
+  /// Next song from a playlist entry, reading Spotify live. Returns the track
+  /// and whether the entry has now offered all its songs this cycle; null when
+  /// there is nothing (left) to play. In-order mode tracks an offset (so
+  /// reordering the playlist in Spotify shifts what comes next); shuffle mode
+  /// tracks played track ids (robust to edits).
+  Future<(Track, bool)?> _fromPlaylist(Member m, PlaylistRef pl) async {
+    final token = await auth.validToken();
+    if (token == null) throw StateError('no Spotify token');
+    if (!m.shuffle) {
+      var guard = 0;
+      while (guard++ < 20) {
+        final page = await SpotifyWebApi.playlistPage(token, pl.id, pl.nextIndex,
+            limit: 10);
+        pl.total = page.total;
+        if (pl.nextIndex >= pl.total || page.fetched == 0) return null;
+        for (final (off, t) in page.items) {
+          if (off >= pl.nextIndex) {
+            pl.nextIndex = off + 1;
+            return (t, pl.nextIndex >= pl.total);
+          }
+        }
+        pl.nextIndex += page.fetched; // page had nothing playable
+      }
+      return null;
+    }
+    final head = await SpotifyWebApi.playlistPage(token, pl.id, 0, limit: 1);
+    pl.total = head.total;
+    if (pl.total == 0) return null;
+    var off = _rng.nextInt(pl.total);
+    var scanned = 0;
+    while (scanned < pl.total) {
+      final page = await SpotifyWebApi.playlistPage(token, pl.id, off, limit: 20);
+      if (page.fetched == 0) break;
+      for (final (_, t) in page.items) {
+        if (pl.playedIds.add(t.id)) {
+          return (t, pl.playedIds.length >= pl.total);
+        }
+      }
+      scanned += page.fetched;
+      off = (off + page.fetched) % pl.total;
+    }
+    return null;
   }
 
   Future<void> _issuePlay() async {
@@ -335,7 +416,7 @@ class HostController extends ChangeNotifier {
       status = 'Playing for ${currentMember?.name}';
       unawaited(
         HostForeground.update(
-          '${current?.track.name} — ${currentMember?.name}',
+          '${current?.track?.name} — ${currentMember?.name}',
         ),
       );
     } catch (e) {
@@ -348,7 +429,7 @@ class HostController extends ChangeNotifier {
       if (_startAttempts < 3) {
         unawaited(_issuePlay());
       } else {
-        lastError = 'Spotify did not start ${current?.track}; skipping it';
+        lastError = 'Spotify did not start ${current?.track?.name}; skipping it';
         _finishCurrent();
       }
     });
@@ -436,7 +517,7 @@ class HostController extends ChangeNotifier {
       if (token == null) return;
       final snap = await SpotifyWebApi.player(token);
       final d = snap?.device;
-      if (d != null && snap!.trackId == current?.track.id) {
+      if (d != null && snap!.trackId == current?.track?.id) {
         _ourDeviceId = d.id;
         ourDeviceName = d.name;
         notifyListeners();
@@ -528,9 +609,9 @@ class HostController extends ChangeNotifier {
       final token = await auth.validToken();
       final dev = _ourDeviceId;
       if (token != null && dev != null) {
-        await SpotifyWebApi.playOn(token, dev, cur.track.uri, _lastPos);
+        await SpotifyWebApi.playOn(token, dev, cur.track!.uri, _lastPos);
       } else {
-        await player.play(cur.track.uri);
+        await player.play(cur.track!.uri);
       }
       status = 'Taking playback back…';
     } catch (e) {
@@ -671,12 +752,12 @@ class HostController extends ChangeNotifier {
         notifyListeners();
       case MsgType.skip:
         final cur = current;
-        if (cur == null || m.body['trackId'] != cur.track.id) return;
+        if (cur == null || m.body['trackId'] != cur.track!.id) return;
         final remaining = max(0, _durationMs - positionMs);
         final who = party.listener(uuid)?.name ?? 'Someone';
         party.penalize(uuid, name, remaining, now);
         notice =
-            '$who skipped ${cur.track.name} '
+            '$who skipped ${cur.track!.name} '
             '(+${formatMs(remaining)} to ${who == name ? 'their' : who}\'s airtime)';
         noticeAt = now;
         status = notice!;
@@ -715,6 +796,15 @@ class HostController extends ChangeNotifier {
           notifyListeners();
           broadcast();
         }
+      case MsgType.modes:
+        party.setModes(uuid, name, now,
+            shuffle: m.body['shuffle'] as bool?,
+            repeat: m.body['repeat'] as bool?);
+        party.removeIdle(playing: currentMember?.uuid);
+        unawaited(_persistParty());
+        notifyListeners();
+        _maybePlayNext();
+        broadcast();
     }
   }
 
@@ -769,7 +859,7 @@ class HostController extends ChangeNotifier {
       now: cur == null || curMember == null
           ? null
           : NowInfo(
-              track: cur.track,
+              track: cur.track!,
               memberUuid: curMember.uuid,
               memberName: curMember.name,
               positionMs: positionMs,
@@ -778,6 +868,9 @@ class HostController extends ChangeNotifier {
             ),
       myPlayedMs: me?.playedMs ?? party.maxPlayedMs,
       myQueue: me == null ? const [] : List.of(me.queue),
+      shuffle: me?.shuffle ?? false,
+      repeat: me?.repeat ?? false,
+      cursor: me?.cursor ?? 0,
       others: [
         for (final m in party.members)
           if (m.uuid != uuid)
@@ -785,8 +878,12 @@ class HostController extends ChangeNotifier {
               uuid: m.uuid,
               name: m.name,
               playedMs: m.playedMs,
-              queueLength: m.queue.length,
-              nextTrack: m.queue.isEmpty ? null : m.queue.first.track.name,
+              queueLength: m.remaining(m.shuffle),
+              nextTrack: m.queue.isEmpty
+                  ? null
+                  : m.shuffle
+                      ? null
+                      : m.queue[m.cursor < m.queue.length ? m.cursor : 0].title,
             ),
       ],
       sentAt: now,
@@ -834,7 +931,7 @@ class HostController extends ChangeNotifier {
     final json = party.toJson();
     final cur = current;
     final cm = currentMember;
-    if (cur != null && cm != null) {
+    if (cur != null && cm != null && !cm.repeat) {
       for (final m in json['members'] as List) {
         if ((m as Map)['uuid'] == cm.uuid) {
           (m['queue'] as List).insert(0, cur.toJson());
