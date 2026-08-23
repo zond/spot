@@ -58,6 +58,30 @@ class MemberController extends ChangeNotifier {
   bool _polling = false;
   bool _watchingVisibility = false;
   Timer? _pingTimer;
+
+  /// Requests sent to the host that haven't been answered by a snapshot yet
+  /// (the UI shows progress while this is > 0).
+  int _inflight = 0;
+  Timer? _inflightTimeout;
+  bool get waiting => _inflight > 0;
+
+  void _beginWait() {
+    _inflight++;
+    _inflightTimeout?.cancel();
+    _inflightTimeout = Timer(const Duration(seconds: 10), () {
+      _inflight = 0;
+      notifyListeners();
+    });
+    notifyListeners();
+  }
+
+  void _endWait() {
+    if (_inflight == 0) return;
+    _inflight = 0;
+    _inflightTimeout?.cancel();
+    notifyListeners();
+  }
+
   final _pendingResolves = <String, Completer<String?>>{};
   final _seen = SeenIds();
 
@@ -248,14 +272,23 @@ class MemberController extends ChangeNotifier {
   }
 
   /// Every message carries our uuid and name so the host can (re)admit us.
-  Future<void> _send(String type, Map<String, dynamic> body) =>
-      switchClient.send(
+  /// Anything but a ping expects an answer (a snapshot or a resolve reply),
+  /// so it is counted as in flight for the UI.
+  Future<void> _send(String type, Map<String, dynamic> body) async {
+    if (type != MsgType.ping) _beginWait();
+    try {
+      await switchClient.send(
         hostUuid!,
         Message(
           type: type,
           body: {'uuid': identity.uuid, 'name': identity.name, ...body},
         ).toData(),
       );
+    } catch (e) {
+      _endWait();
+      rethrow;
+    }
+  }
 
   static const _versionKey = 'member_app_version';
   DateTime _lastVersionCheck = DateTime.fromMillisecondsSinceEpoch(0);
@@ -476,6 +509,7 @@ class MemberController extends ChangeNotifier {
       if (rid is String) {
         _pendingResolves[rid]?.complete(m.body['url'] as String?);
       }
+      _endWait();
       return;
     }
     if (m.type != MsgType.state) return;
@@ -486,6 +520,7 @@ class MemberController extends ChangeNotifier {
       view = v;
       lastStateAt = DateTime.now();
       error = null;
+      _endWait();
       notifyListeners();
     } catch (_) {}
   }

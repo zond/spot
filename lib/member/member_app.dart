@@ -528,6 +528,12 @@ class _PartyScreenState extends State<PartyScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text("${c.displayHostName}'s party"),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(3),
+          child: c.waiting
+              ? const LinearProgressIndicator(minHeight: 3)
+              : const SizedBox(height: 3),
+        ),
         actions: [
           IconButton(
             tooltip: 'Change my name',
@@ -826,64 +832,71 @@ class _PartyScreenState extends State<PartyScreen> {
               ),
             ),
           if (v != null && v.myQueue.isNotEmpty)
-            ReorderableListView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              buildDefaultDragHandles: false,
-              onReorderItem: (oldIndex, newIndex) {
-                final ids = v.myQueue.map((q) => q.id).toList();
-                ids.insert(newIndex, ids.removeAt(oldIndex));
-                c.reorder(ids);
-              },
-              children: [
-                for (var i = 0; i < v.myQueue.length; i++)
-                  ListTile(
-                    key: ValueKey(v.myQueue[i].id),
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    selected: v.repeat && !v.shuffle && i == v.cursor,
-                    leading: ReorderableDragStartListener(
-                      index: i,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.drag_handle, color: Colors.white54),
-                          const SizedBox(width: 6),
-                          v.myQueue[i].playlist != null
-                              ? const Icon(Icons.queue_music)
-                              : _art(v.myQueue[i].track!),
-                        ],
-                      ),
-                    ),
-                    title: Text(
-                      v.myQueue[i].title,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      v.myQueue[i].playlist != null
-                          ? 'Playlist · '
-                                '${v.shuffle ? v.myQueue[i].playlist!.playedIds.length : v.myQueue[i].playlist!.nextIndex}'
-                                ' / ${v.myQueue[i].playlist!.total} played'
-                                '${v.repeat ? '' : ' · removed when done'}'
-                          : '${v.myQueue[i].track!.artists} · '
-                                '${formatMs(v.myQueue[i].track!.durationMs)}',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: IconButton(
-                      tooltip: 'Remove',
-                      icon: const Icon(Icons.remove_circle_outline),
-                      onPressed: () => c.dequeue(v.myQueue[i].id),
-                    ),
-                    onTap: v.myQueue[i].track == null
-                        ? () => launchUrl(
-                            Uri.parse(
-                              'https://open.spotify.com/playlist/${v.myQueue[i].playlist!.id}',
+            AnimatedOpacity(
+              opacity: c.waiting ? 0.55 : 1,
+              duration: const Duration(milliseconds: 200),
+              child: ReorderableListView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                onReorderItem: (oldIndex, newIndex) {
+                  final ids = v.myQueue.map((q) => q.id).toList();
+                  ids.insert(newIndex, ids.removeAt(oldIndex));
+                  c.reorder(ids);
+                },
+                children: [
+                  for (var i = 0; i < v.myQueue.length; i++)
+                    ListTile(
+                      key: ValueKey(v.myQueue[i].id),
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      selected: v.repeat && !v.shuffle && i == v.cursor,
+                      leading: ReorderableDragStartListener(
+                        index: i,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.drag_handle,
+                              color: Colors.white54,
                             ),
-                            mode: LaunchMode.externalApplication,
-                          )
-                        : () => openInSpotify(v.myQueue[i].track!),
-                  ),
-              ],
+                            const SizedBox(width: 6),
+                            v.myQueue[i].playlist != null
+                                ? const Icon(Icons.queue_music)
+                                : _art(v.myQueue[i].track!),
+                          ],
+                        ),
+                      ),
+                      title: Text(
+                        v.myQueue[i].title,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        v.myQueue[i].playlist != null
+                            ? 'Playlist · '
+                                  '${v.shuffle ? v.myQueue[i].playlist!.playedIds.length : v.myQueue[i].playlist!.nextIndex}'
+                                  ' / ${v.myQueue[i].playlist!.total} played'
+                                  '${v.repeat ? '' : ' · removed when done'}'
+                            : '${v.myQueue[i].track!.artists} · '
+                                  '${formatMs(v.myQueue[i].track!.durationMs)}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: IconButton(
+                        tooltip: 'Remove',
+                        icon: const Icon(Icons.remove_circle_outline),
+                        onPressed: () => c.dequeue(v.myQueue[i].id),
+                      ),
+                      onTap: v.myQueue[i].track == null
+                          ? () => launchUrl(
+                              Uri.parse(
+                                'https://open.spotify.com/playlist/${v.myQueue[i].playlist!.id}',
+                              ),
+                              mode: LaunchMode.externalApplication,
+                            )
+                          : () => openInSpotify(v.myQueue[i].track!),
+                    ),
+                ],
+              ),
             ),
           const SizedBox(height: 16),
           Text('Everyone else', style: theme.textTheme.titleMedium),

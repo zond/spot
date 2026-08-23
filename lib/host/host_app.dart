@@ -671,7 +671,14 @@ class _MemberTile extends StatelessWidget {
               icon: const Icon(Icons.remove_circle_outline),
               onPressed: () => controller.removeQueued(member.uuid, item.id),
             ),
-            onTap: item.track == null ? null : () => openInSpotify(item.track!),
+            onTap: item.track == null
+                ? () => launchUrl(
+                    Uri.parse(
+                      'https://open.spotify.com/playlist/${item.playlist!.id}',
+                    ),
+                    mode: LaunchMode.externalApplication,
+                  )
+                : () => openInSpotify(item.track!),
           ),
       ],
     );
