@@ -107,7 +107,7 @@ and the service worker.
 
 ```bash
 flutter build apk --release      # → build/app/outputs/flutter-apk/app-release.apk
-cp build/app/outputs/flutter-apk/app-release.apk ~/Drive/Spot.apk   # install from Drive
+cp build/app/outputs/flutter-apk/app-release.apk ~/Drive/Spot/Spot.apk   # shared Drive folder
 # or straight to a connected phone:
 flutter run -d <your-phone>
 ```

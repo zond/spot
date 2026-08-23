@@ -10,8 +10,10 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 
 ## Build / deploy / push
 
-- Host: `flutter build apk --release` and copy `app-release.apk` to `~/Drive/Spot.apk`
-  (the user's Google Drive mount; they install from there). `flutter run -d <phone>` for dev.
+- Host: `flutter build apk --release` and copy `app-release.apk` to
+  `~/Drive/Spot/Spot.apk` (the user's Google Drive mount; the `Spot` folder is
+  shared with their family, who install from there). The mount is slow: copy
+  to a `.part` name and `mv`, with a long timeout. `flutter run -d <phone>` for dev.
 - Member web: `./deploy-web.sh` builds and force-pushes `gh-pages` of
   `git@github.com:zond/spot.git`. Fix build errors rather than skipping.
 - Source: `git add` / `git commit` / `git push origin main`.
