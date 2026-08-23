@@ -493,6 +493,49 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
               ),
             ),
           ),
+          if (c.takenOver)
+            Card(
+              color: theme.colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Spotify is playing on "${c.takenOverBy}" — the party '
+                      'is paused. (One stream per account: someone else is '
+                      'using this Spotify account.)',
+                      style: TextStyle(
+                        color: theme.colorScheme.onErrorContainer,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        FilledButton.icon(
+                          onPressed: c.reclaim,
+                          icon: const Icon(Icons.phone_android, size: 18),
+                          label: const Text('Take back'),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: SwitchListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Auto-reclaim after 30 s',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                            value: c.autoReclaim,
+                            onChanged: c.setAutoReclaim,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -504,7 +547,8 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '${c.spotifyConnected ? 'Spotify connected' : 'Spotify disconnected'} · '
+                  '${c.spotifyConnected ? 'Spotify connected' : 'Spotify disconnected'}'
+                  '${c.ourDeviceName == null ? '' : ' (${c.ourDeviceName})'} · '
                   '${members.length} member${members.length == 1 ? '' : 's'}',
                   style: const TextStyle(fontSize: 12, color: Colors.white60),
                 ),

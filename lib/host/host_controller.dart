@@ -12,6 +12,7 @@ import '../models/party.dart';
 import '../models/track.dart';
 import '../services/identity.dart';
 import '../services/messages.dart';
+import '../services/spotify_web_api.dart';
 import '../services/switch_client.dart';
 import 'foreground.dart';
 import 'host_player.dart';
@@ -36,8 +37,8 @@ class HostController extends ChangeNotifier {
     required this.player,
     SwitchClient? switchClient,
     HostPush? push,
-  })  : switchClient = switchClient ?? SwitchClient(),
-        push = push ?? HostPush();
+  }) : switchClient = switchClient ?? SwitchClient(),
+       push = push ?? HostPush();
 
   static const _partyKey = 'host_party';
 
@@ -51,6 +52,17 @@ class HostController extends ChangeNotifier {
   HostPhase phase = HostPhase.idle;
   String? notice;
   int noticeAt = 0;
+
+  // ---- Spotify taken over by another device (one stream per account)
+  /// Spotify Connect id/name of *this* phone, learnt the first time our track
+  /// is heard playing.
+  String? _ourDeviceId;
+  String? ourDeviceName;
+  bool takenOver = false;
+  String? takenOverBy;
+  bool autoReclaim = false;
+  Timer? _reclaimTimer;
+  bool _checkingDevice = false;
   String status = '';
   String? lastError;
   bool spotifyConnected = false;
@@ -81,10 +93,11 @@ class HostController extends ChangeNotifier {
   int _pollFailures = 0;
   final _seen = SeenIds();
 
-  String get joinUrl => Uri.parse(Config.webBaseUrl).replace(queryParameters: {
-        'join': identity.uuid,
-        'n': identity.name ?? 'Host',
-      }).toString();
+  String get joinUrl => Uri.parse(Config.webBaseUrl)
+      .replace(
+        queryParameters: {'join': identity.uuid, 'n': identity.name ?? 'Host'},
+      )
+      .toString();
 
   /// Extrapolated playback position of the current track.
   int get positionMs => paused
@@ -98,7 +111,8 @@ class HostController extends ChangeNotifier {
 
   /// Airtime including the part of the current track not yet credited (credit
   /// happens on Spotify state events, which are sparse).
-  int airtimeOf(Member m) => m.playedMs +
+  int airtimeOf(Member m) =>
+      m.playedMs +
       (currentMember?.uuid == m.uuid && _sawPlaying
           ? max(0, positionMs - _lastPos)
           : 0);
@@ -117,7 +131,8 @@ class HostController extends ChangeNotifier {
       notifyListeners();
       if (auth.needsRelogin) {
         throw StateError(
-            'Spot needs new Spotify permissions: log out and log in again.');
+          'Spot needs new Spotify permissions: log out and log in again.',
+        );
       }
       final token = await auth.validToken();
       if (token == null) throw StateError('Log in to Spotify first');
@@ -127,14 +142,18 @@ class HostController extends ChangeNotifier {
       final fcmToken = await push.init(_onPushData);
       if (fcmToken == null) {
         throw StateError(
-            'Push (FCM) unavailable: ${push.error ?? 'no token'}. '
-            'Run `flutterfire configure` for Android (see README).');
+          'Push (FCM) unavailable: ${push.error ?? 'no token'}. '
+          'Run `flutterfire configure` for Android (see README).',
+        );
       }
       push.onTokenRefresh = (t) => switchClient
           .register(uuid: identity.uuid, token: t, secret: identity.secret)
           .catchError((_) {});
       await switchClient.register(
-          uuid: identity.uuid, token: fcmToken, secret: identity.secret);
+        uuid: identity.uuid,
+        token: fcmToken,
+        secret: identity.secret,
+      );
 
       status = 'Connecting to the Spotify app…';
       notifyListeners();
@@ -190,6 +209,10 @@ class HostController extends ChangeNotifier {
     await _connSub?.cancel();
     _stateSub = null;
     _connSub = null;
+    _reclaimTimer?.cancel();
+    _reclaimTimer = null;
+    takenOver = false;
+    takenOverBy = null;
     if (spotifyConnected) {
       try {
         await player.pause();
@@ -218,14 +241,18 @@ class HostController extends ChangeNotifier {
     spotifyConnected = true;
     await _stateSub?.cancel();
     await _connSub?.cancel();
-    _stateSub = player.states.listen(_onPlayerState, onError: (Object e) {
-      lastError = 'Player: $e';
-      notifyListeners();
-    });
+    _stateSub = player.states.listen(
+      _onPlayerState,
+      onError: (Object e) {
+        lastError = 'Player: $e';
+        notifyListeners();
+      },
+    );
     _connSub = player.connection.listen((c) {
       spotifyConnected = c.connected;
       if (!c.connected) {
-        status = 'Spotify disconnected${c.message == null ? '' : ': ${c.message}'}';
+        status =
+            'Spotify disconnected${c.message == null ? '' : ': ${c.message}'}';
         _scheduleReconnect();
       }
       notifyListeners();
@@ -301,8 +328,11 @@ class HostController extends ChangeNotifier {
     try {
       await player.play(uri);
       status = 'Playing for ${currentMember?.name}';
-      unawaited(HostForeground.update(
-          '${current?.track.name} — ${currentMember?.name}'));
+      unawaited(
+        HostForeground.update(
+          '${current?.track.name} — ${currentMember?.name}',
+        ),
+      );
     } catch (e) {
       lastError = 'Play failed: $e';
     }
@@ -325,13 +355,25 @@ class HostController extends ChangeNotifier {
     if (expected == null || track == null) return;
 
     final isOurs = track.uri == expected || track.linkedFromUri == expected;
+    if (takenOver) {
+      // Another device holds the account. We're back when our track is heard
+      // playing here again (Take back / auto-reclaim / someone transferred).
+      if (isOurs && !s.isPaused) {
+        _exitTakenOver();
+      } else {
+        return;
+      }
+    }
     if (!isOurs) {
       // Before we've seen our track play, Spotify is still switching to it.
-      // After, a different track means ours ended (autoplay kicked in) or
-      // someone skipped in the Spotify app: either way, move on.
-      if (_sawPlaying) _finishCurrent();
+      // After, a different track means ours ended (autoplay kicked in),
+      // someone skipped in the Spotify app — or another device took the
+      // account over. Ask Spotify which device is active before moving on.
+      if (_sawPlaying) unawaited(_onForeignTrack());
       return;
     }
+
+    if (_ourDeviceId == null && !s.isPaused) unawaited(_learnDevice());
 
     final pos = s.playbackPosition;
     final duration = track.duration > 0 ? track.duration : _durationMs;
@@ -371,14 +413,128 @@ class HostController extends ChangeNotifier {
     _endCheck?.cancel();
     if (!s.isPaused && duration > 0) {
       _endCheck = Timer(
-          Duration(milliseconds: max(0, duration - pos) + 2500), _checkEnd);
+        Duration(milliseconds: max(0, duration - pos) + 2500),
+        _checkEnd,
+      );
     }
     if (pausedChanged) broadcast();
     notifyListeners();
   }
 
+  /// Remembers which Spotify Connect device is "this phone": whatever is
+  /// active while our track is playing.
+  Future<void> _learnDevice() async {
+    if (_checkingDevice) return;
+    _checkingDevice = true;
+    try {
+      final token = await auth.validToken();
+      if (token == null) return;
+      final snap = await SpotifyWebApi.player(token);
+      final d = snap?.device;
+      if (d != null && snap!.trackId == current?.track.id) {
+        _ourDeviceId = d.id;
+        ourDeviceName = d.name;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Without device info we fall back to the old behaviour.
+    } finally {
+      _checkingDevice = false;
+    }
+  }
+
+  /// A track that isn't ours is playing. Either our song ended and Spotify
+  /// autoplayed (same device → move on) or another device took the account
+  /// over (→ pause the party instead of feeding it our queue).
+  Future<void> _onForeignTrack() async {
+    if (_checkingDevice || takenOver || _expectedUri == null) return;
+    _checkingDevice = true;
+    try {
+      final token = await auth.validToken();
+      final snap = token == null ? null : await SpotifyWebApi.player(token);
+      final d = snap?.device;
+      if (d != null && _ourDeviceId != null && d.id != _ourDeviceId) {
+        _enterTakenOver(d.name);
+        return;
+      }
+    } catch (_) {
+      // Can't tell; assume the usual end-of-track case.
+    } finally {
+      _checkingDevice = false;
+    }
+    if (!takenOver && _expectedUri != null) _finishCurrent();
+  }
+
+  void _enterTakenOver(String deviceName) {
+    takenOver = true;
+    takenOverBy = deviceName;
+    paused = true;
+    _positionMs = _lastPos;
+    _positionAt = DateTime.now();
+    _endCheck?.cancel();
+    _startTimeout?.cancel();
+    status = 'Spotify is playing on $deviceName — party paused';
+    notice = 'Party paused: Spotify was taken over by $deviceName';
+    noticeAt = DateTime.now().millisecondsSinceEpoch;
+    unawaited(HostForeground.update(status));
+    notifyListeners();
+    broadcast();
+    if (autoReclaim) {
+      _reclaimTimer?.cancel();
+      _reclaimTimer = Timer(const Duration(seconds: 30), () {
+        if (takenOver) unawaited(reclaim());
+      });
+    }
+  }
+
+  void _exitTakenOver() {
+    takenOver = false;
+    takenOverBy = null;
+    _reclaimTimer?.cancel();
+    _reclaimTimer = null;
+    status = 'Playing for ${currentMember?.name}';
+    notice = 'Back on this phone';
+    noticeAt = DateTime.now().millisecondsSinceEpoch;
+    notifyListeners();
+    broadcast();
+  }
+
+  /// Pulls playback back to this phone and resumes the current song where it
+  /// was. Falls back to App Remote's play when the Web API can't help.
+  Future<void> reclaim() async {
+    final cur = current;
+    if (cur == null) return;
+    _sawPlaying = false;
+    try {
+      final token = await auth.validToken();
+      final dev = _ourDeviceId;
+      if (token != null && dev != null) {
+        await SpotifyWebApi.playOn(token, dev, cur.track.uri, _lastPos);
+      } else {
+        await player.play(cur.track.uri);
+      }
+      status = 'Taking playback back…';
+    } catch (e) {
+      lastError = 'Take back: $e';
+    }
+    notifyListeners();
+  }
+
+  void setAutoReclaim(bool on) {
+    autoReclaim = on;
+    if (!on) {
+      _reclaimTimer?.cancel();
+      _reclaimTimer = null;
+    } else if (takenOver && _reclaimTimer == null) {
+      _reclaimTimer = Timer(const Duration(seconds: 30), () {
+        if (takenOver) unawaited(reclaim());
+      });
+    }
+    notifyListeners();
+  }
+
   Future<void> _checkEnd() async {
-    if (_expectedUri == null) return;
+    if (_expectedUri == null || takenOver) return;
     try {
       final s = await player.state();
       if (s != null) {
@@ -453,7 +609,9 @@ class HostController extends ChangeNotifier {
     _polling = true;
     try {
       final msgs = await switchClient.inbox(
-          uuid: identity.uuid, secret: identity.secret);
+        uuid: identity.uuid,
+        secret: identity.secret,
+      );
       for (final d in msgs) {
         final m = Message.fromData(d);
         if (m != null) _handle(m);
@@ -498,7 +656,8 @@ class HostController extends ChangeNotifier {
         final remaining = max(0, _durationMs - positionMs);
         final who = party.listener(uuid)?.name ?? 'Someone';
         party.penalize(uuid, name, remaining, now);
-        notice = '$who skipped ${cur.track.name} '
+        notice =
+            '$who skipped ${cur.track.name} '
             '(+${formatMs(remaining)} to ${who == name ? 'their' : who}\'s airtime)';
         noticeAt = now;
         status = notice!;
@@ -546,8 +705,10 @@ class HostController extends ChangeNotifier {
   /// costs one round of sends).
   void broadcast() {
     if (phase != HostPhase.running) return;
-    _broadcastDebounce ??=
-        Timer(const Duration(milliseconds: 300), _flushBroadcast);
+    _broadcastDebounce ??= Timer(
+      const Duration(milliseconds: 300),
+      _flushBroadcast,
+    );
   }
 
   Future<void> _flushBroadcast() async {
@@ -566,7 +727,9 @@ class HostController extends ChangeNotifier {
     if (view == null) return;
     try {
       await switchClient.send(
-          uuid, Message(type: MsgType.state, body: view.toJson()).toData());
+        uuid,
+        Message(type: MsgType.state, body: view.toJson()).toData(),
+      );
     } catch (e) {
       lastError = 'Send to ${party.listener(uuid)?.name}: $e';
       notifyListeners();
@@ -675,5 +838,6 @@ class HostController extends ChangeNotifier {
     }
   }
 
-  Future<void> loadSavedParty() => _restoreParty().then((_) => notifyListeners());
+  Future<void> loadSavedParty() =>
+      _restoreParty().then((_) => notifyListeners());
 }

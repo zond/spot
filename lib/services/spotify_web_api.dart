@@ -52,6 +52,21 @@ class TrackCollection {
   bool get complete => nextOffset == null;
 }
 
+/// Where the account is playing right now (GET /me/player).
+class PlaybackDevice {
+  const PlaybackDevice({required this.id, required this.name, required this.type});
+  final String id;
+  final String name;
+  final String type;
+}
+
+class PlayerSnapshot {
+  const PlayerSnapshot({this.device, required this.isPlaying, this.trackId});
+  final PlaybackDevice? device;
+  final bool isPlaying;
+  final String? trackId;
+}
+
 /// The bits of the Spotify Web API the party uses. Works with any valid user
 /// access token — members use the host's. Stays within what Development Mode
 /// apps may call (Feb 2026 rules): search ≤ 10, single-item lookups,
@@ -65,6 +80,55 @@ abstract final class SpotifyWebApi {
       throw SpotifyApiException(resp.statusCode, resp.body);
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  /// The account's current playback and active device; null when Spotify
+  /// reports nothing playing anywhere (204). Needs user-read-playback-state.
+  static Future<PlayerSnapshot?> player(String token) async {
+    final resp = await http
+        .get(Uri.https('api.spotify.com', '/v1/me/player'),
+            headers: {'Authorization': 'Bearer $token'})
+        .timeout(const Duration(seconds: 10));
+    if (resp.statusCode == 204 || resp.body.trim().isEmpty) return null;
+    if (resp.statusCode != 200) {
+      throw SpotifyApiException(resp.statusCode, resp.body);
+    }
+    final j = jsonDecode(resp.body) as Map<String, dynamic>;
+    final d = j['device'] as Map?;
+    return PlayerSnapshot(
+      device: d == null || d['id'] == null
+          ? null
+          : PlaybackDevice(
+              id: d['id'] as String,
+              name: d['name'] as String? ?? 'Unknown device',
+              type: d['type'] as String? ?? ''),
+      isPlaying: j['is_playing'] == true,
+      trackId: (j['item'] as Map?)?['id'] as String?,
+    );
+  }
+
+  /// Starts [uri] on [deviceId] at [positionMs] (transfers playback there).
+  /// Needs user-modify-playback-state.
+  static Future<void> playOn(
+      String token, String deviceId, String uri, int positionMs) async {
+    final resp = await http
+        .put(
+          Uri.https('api.spotify.com', '/v1/me/player/play',
+              {'device_id': deviceId}),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'uris': [uri],
+            'position_ms': positionMs,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+    if (resp.statusCode != 204 && resp.statusCode != 202 &&
+        resp.statusCode != 200) {
+      throw SpotifyApiException(resp.statusCode, resp.body);
+    }
   }
 
   static Future<Track> track(String token, String id) async =>
