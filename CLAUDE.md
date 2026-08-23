@@ -59,7 +59,8 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
   re-admitted at the party maximum on their next enqueue; member pages ping
   every `Config.memberPingInterval` while visible.
 - Spotify Development Mode (Feb 2026): search ≤ 10 results, 5 auth users,
-  no /users/{id}/playlists or batch endpoints. Member playlist access is via
+  no /users/{id}/playlists or batch endpoints; playlist items readable only
+  for playlists the host owns or collaborates on (403 otherwise). Member playlist access is via
   pasted/shared links (`SpotifyLink`, `/playlists/{id}/items`, `/albums/{id}`,
   `/tracks/{id}`) and the manifest's `share_target`.
 - Spotify client id is entered in the app (`HostSettings`, SharedPreferences);

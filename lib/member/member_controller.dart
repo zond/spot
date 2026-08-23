@@ -408,10 +408,14 @@ class MemberController extends ChangeNotifier {
           'Token expired; asked the host for a new one. Try again.',
         );
       }
-      if (e.status == 404 || e.status == 403) {
+      if (e.status == 403 || e.status == 404) {
+        final host = view?.hostName ?? 'the host';
         throw StateError(
-          'Spotify would not hand out that ${link.type} — private playlists '
-          'and Spotify-made ones cannot be read. Make it public and try again.',
+          'Spotify only lets Spot read playlists that $host owns or '
+          'collaborates on (a 2026 API rule — "public" no longer matters). '
+          'Fix: in Spotify open the playlist → ⋯ → Invite collaborators and '
+          'let $host join it; then paste the link again. Until then, add its '
+          'songs one by one via search.',
         );
       }
       rethrow;
