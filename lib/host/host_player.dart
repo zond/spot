@@ -13,6 +13,9 @@ abstract interface class HostPlayer {
   Stream<ConnectionStatus> get connection;
   Future<PlayerState?> state();
   Future<void> play(String uri);
+
+  /// Plays item [index] of a playlist/album context.
+  Future<void> playIndex(String contextUri, int index);
   Future<void> pause();
   Future<void> resume();
 }
@@ -66,6 +69,10 @@ class AppRemotePlayer implements HostPlayer {
 
   @override
   Future<void> play(String uri) => SpotifySdk.play(spotifyUri: uri);
+
+  @override
+  Future<void> playIndex(String contextUri, int index) =>
+      SpotifySdk.skipToIndex(spotifyUri: contextUri, trackIndex: index);
 
   @override
   Future<void> pause() => SpotifySdk.pause();

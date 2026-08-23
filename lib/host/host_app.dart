@@ -726,6 +726,7 @@ class _MemberTile extends StatelessWidget {
               item.playlist != null
                   ? 'Playlist · ${member.shuffle ? item.playlist!.playedIds.length : item.playlist!.nextIndex}'
                         ' / ${item.playlist!.total} played'
+                        '${item.playlist!.viaApp ? ' · via Spotify app' : ''}'
                   : '${item.track!.artists} · ${formatMs(item.track!.durationMs)}',
               overflow: TextOverflow.ellipsis,
             ),

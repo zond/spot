@@ -12,10 +12,18 @@ class PlaylistRef {
     required this.total,
     this.nextIndex = 0,
     Set<String>? playedIds,
+    this.viaApp = false,
   }) : playedIds = playedIds ?? {};
 
   final String id;
   String name;
+
+  /// The host can't read this playlist's items (not the host's own, not a
+  /// collaborator): it is played by index through the Spotify app instead;
+  /// [playedIds] then holds "#index" markers.
+  bool viaApp;
+
+  String get uri => 'spotify:playlist:$id';
 
   /// Number of items, as last seen (refreshed whenever the host reads it).
   int total;
@@ -44,6 +52,7 @@ class PlaylistRef {
     'c': total,
     if (nextIndex > 0) 'i': nextIndex,
     if (playedIds.isNotEmpty) 'p': playedIds.toList(),
+    if (viaApp) 'app': true,
   };
 
   factory PlaylistRef.fromJson(Map<String, dynamic> j) => PlaylistRef(
@@ -52,6 +61,7 @@ class PlaylistRef {
     total: (j['c'] as num?)?.toInt() ?? 0,
     nextIndex: (j['i'] as num?)?.toInt() ?? 0,
     playedIds: ((j['p'] as List?) ?? const []).cast<String>().toSet(),
+    viaApp: j['app'] == true,
   );
 }
 

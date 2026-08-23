@@ -487,7 +487,7 @@ class _PartyScreenState extends State<PartyScreen> {
 
   Future<void> _addPlaylistEntry(TrackCollection col) async {
     final messenger = ScaffoldMessenger.of(context);
-    await c.enqueuePlaylist(col.id!, col.name, col.total);
+    await c.enqueuePlaylist(col.id!, col.name, col.total, viaApp: col.viaApp);
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -743,14 +743,29 @@ class _PartyScreenState extends State<PartyScreen> {
                 ),
                 onTap: () => openInSpotify(t),
               ),
+            if (_collection!.viaApp)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Spotify won\'t list the songs of a playlist the host doesn\'t '
+                  'own or collaborate on — but the host can still play it, '
+                  'by index, through the Spotify app.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.white60,
+                  ),
+                ),
+              ),
             if (_collection!.kind == 'Playlist' && _collection!.id != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 4),
                 child: FilledButton.tonalIcon(
-                  onPressed: () => _addPlaylistEntry(_collection!),
+                  onPressed: _collection!.total == 0
+                      ? null
+                      : () => _addPlaylistEntry(_collection!),
                   icon: const Icon(Icons.playlist_add, size: 18),
                   label: Text(
-                    'Add playlist as entry (${_collection!.total} songs)',
+                    'Add playlist as entry (${_collection!.total} songs'
+                    '${_collection!.viaApp ? ', via Spotify app' : ''})',
                   ),
                 ),
               ),

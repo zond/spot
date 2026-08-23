@@ -84,6 +84,12 @@ class HostController extends ChangeNotifier {
   /// was playing when the host started) finish before taking over. Nobody is
   /// credited for it and skipping it is free.
   bool interlude = false;
+
+  /// Playing a playlist the host can't read: we told the Spotify app to play
+  /// index n of the context and are waiting to learn which track that is.
+  bool _awaitingContext = false;
+  String? _lastFinishedUri;
+  Timer? _preempt;
   String? _expectedUri;
   bool _sawPlaying = false;
   int _lastPos = 0;
@@ -217,6 +223,7 @@ class HostController extends ChangeNotifier {
     _reconnect?.cancel();
     _endCheck?.cancel();
     _startTimeout?.cancel();
+    _preempt?.cancel();
     _pollTimer = _heartbeat = _tokenTimer = _broadcastDebounce = null;
     _reconnect = _endCheck = _startTimeout = null;
     await _stateSub?.cancel();
@@ -317,6 +324,17 @@ class HostController extends ChangeNotifier {
         var done = false;
         if (entry.track != null) {
           track = entry.track;
+        } else if (entry.playlist!.viaApp) {
+          // Can't read the items: play by index through the Spotify app.
+          final r = await _nextIndex(member, entry.playlist!);
+          if (r == null) {
+            party.commit(member, entry, playlistDone: true);
+            if (member.repeat) party.dequeue(member.uuid, entry.id);
+            continue;
+          }
+          party.commit(member, entry, playlistDone: r.$2);
+          await _startContext(member, entry, r.$1);
+          return;
         } else {
           try {
             final r = await _fromPlaylist(member, entry.playlist!);
@@ -371,6 +389,118 @@ class HostController extends ChangeNotifier {
     notifyListeners();
     await _issuePlay();
     broadcast();
+  }
+
+  /// Next index to play from a playlist the host can't read (in order, or a
+  /// random not-yet-played index), and whether the entry is then done for
+  /// this cycle. Refreshes the total from Spotify's metadata when possible.
+  Future<(int, bool)?> _nextIndex(Member m, PlaylistRef pl) async {
+    try {
+      final token = await auth.validToken();
+      if (token != null) {
+        final meta = await SpotifyWebApi.playlistMeta(token, pl.id);
+        if (meta.total > 0) pl.total = meta.total;
+        pl.name = meta.name;
+      }
+    } catch (_) {}
+    if (pl.total <= 0) return null;
+    if (!m.shuffle) {
+      if (pl.nextIndex >= pl.total) return null;
+      final idx = pl.nextIndex++;
+      return (idx, pl.nextIndex >= pl.total);
+    }
+    final free = [
+      for (var i = 0; i < pl.total; i++)
+        if (!pl.playedIds.contains('#$i')) i,
+    ];
+    if (free.isEmpty) return null;
+    final idx = free[_rng.nextInt(free.length)];
+    pl.playedIds.add('#$idx');
+    return (idx, pl.playedIds.length >= pl.total);
+  }
+
+  /// Starts item [idx] of a playlist the host can't read, via the Spotify app.
+  /// The actual track is learnt from the first player state that shows it.
+  Future<void> _startContext(Member member, QueueItem entry, int idx) async {
+    final pl = entry.playlist!;
+    interlude = false;
+    _awaitingContext = true;
+    current = QueueItem(
+      id: '${entry.id}:#$idx',
+      track: Track(
+        id: '',
+        name: '${pl.name} · #${idx + 1}',
+        artists: 'starting…',
+        durationMs: 0,
+      ),
+    );
+    currentMember = member;
+    party.removeIdle(playing: member.uuid);
+    _expectedUri = null;
+    _sawPlaying = false;
+    _lastPos = 0;
+    _positionMs = 0;
+    _positionAt = DateTime.now();
+    paused = false;
+    _durationMs = 0;
+    _startAttempts = 0;
+    await _persistParty();
+    notifyListeners();
+    await _issuePlayIndex(pl.uri, idx);
+    broadcast();
+  }
+
+  Future<void> _issuePlayIndex(String contextUri, int idx) async {
+    _startAttempts++;
+    try {
+      await player.playIndex(contextUri, idx);
+      status = 'Playing for ${currentMember?.name} (from a playlist)';
+    } catch (e) {
+      lastError = 'Play playlist item failed: $e';
+    }
+    notifyListeners();
+    _startTimeout?.cancel();
+    _startTimeout = Timer(const Duration(seconds: 10), () {
+      if (!_awaitingContext) return;
+      if (_startAttempts < 3) {
+        unawaited(_issuePlayIndex(contextUri, idx));
+      } else {
+        lastError = 'Spotify did not start item ${idx + 1}; skipping it';
+        _awaitingContext = false;
+        _finishCurrent();
+      }
+    });
+  }
+
+  /// Builds a [Track] from what App Remote reports is playing.
+  Track _trackFromState(PlayerState s) {
+    final t = s.track!;
+    final artists = t.artists
+        .map((a) => a.name)
+        .whereType<String>()
+        .where((n) => n.isNotEmpty)
+        .join(', ');
+    final raw = t.imageUri.raw;
+    final image = raw.startsWith('spotify:image:')
+        ? 'https://i.scdn.co/image/${raw.substring('spotify:image:'.length)}'
+        : null;
+    return Track(
+      id: Track.idFromUri(t.uri) ?? t.uri,
+      name: t.name,
+      artists: artists.isEmpty ? (t.artist.name ?? '') : artists,
+      durationMs: t.duration,
+      imageUrl: image,
+    );
+  }
+
+  /// Cut the song just before its end and move on, so Spotify never gets to
+  /// continue a playlist context or autoplay something of its own.
+  Future<void> _preemptEnd() async {
+    if (_expectedUri == null || takenOver || paused) return;
+    try {
+      await player.pause();
+    } catch (_) {}
+    _finishCurrent();
   }
 
   /// Next song from a playlist entry, reading Spotify live. Returns the track
@@ -456,6 +586,25 @@ class HostController extends ChangeNotifier {
   }
 
   void _onPlayerState(PlayerState s) {
+    if (_awaitingContext) {
+      final t = s.track;
+      // The first state showing a *new* playing track is our playlist item.
+      if (t != null && !s.isPaused && t.uri != _lastFinishedUri) {
+        _awaitingContext = false;
+        _startTimeout?.cancel();
+        final adopted = _trackFromState(s);
+        current = QueueItem(id: current?.id ?? adopted.id, track: adopted);
+        _expectedUri = t.uri;
+        _durationMs = adopted.durationMs;
+        unawaited(
+          HostForeground.update('${adopted.name} — ${currentMember?.name}'),
+        );
+        unawaited(_persistParty());
+        broadcast();
+      } else {
+        return;
+      }
+    }
     final expected = _expectedUri;
     final track = s.track;
     if (expected == null || track == null) return;
@@ -520,11 +669,16 @@ class HostController extends ChangeNotifier {
     }
 
     _endCheck?.cancel();
+    _preempt?.cancel();
     if (!s.isPaused && duration > 0) {
       _endCheck = Timer(
         Duration(milliseconds: max(0, duration - pos) + 2500),
         _checkEnd,
       );
+      final untilCut = duration - pos - Config.preemptEnd.inMilliseconds;
+      if (untilCut > 0) {
+        _preempt = Timer(Duration(milliseconds: untilCut), _preemptEnd);
+      }
     }
     if (pausedChanged) broadcast();
     notifyListeners();
@@ -591,6 +745,7 @@ class HostController extends ChangeNotifier {
     _positionAt = DateTime.now();
     _endCheck?.cancel();
     _startTimeout?.cancel();
+    _preempt?.cancel();
     status = local
         ? 'Someone started other music in Spotify here — party paused'
         : 'Spotify is playing on $deviceName — party paused';
@@ -675,6 +830,9 @@ class HostController extends ChangeNotifier {
   void _finishCurrent() {
     _endCheck?.cancel();
     _startTimeout?.cancel();
+    _preempt?.cancel();
+    _lastFinishedUri = _expectedUri;
+    _awaitingContext = false;
     _expectedUri = null;
     current = null;
     currentMember = null;

@@ -99,6 +99,7 @@ class TrackCollection {
     this.id,
     int? total,
     this.nextOffset,
+    this.viaApp = false,
   }) : total = total ?? tracks.length;
   final String kind;
   final String name;
@@ -106,6 +107,10 @@ class TrackCollection {
   final List<Track> tracks;
   int total;
   int? nextOffset;
+
+  /// Items can't be read (not the host's playlist); only name/total known.
+  /// The host can still play it through the Spotify app by index.
+  final bool viaApp;
   bool get complete => nextOffset == null;
 }
 
@@ -206,22 +211,55 @@ abstract final class SpotifyWebApi {
         await _get(token, Uri.https('api.spotify.com', '/v1/tracks/$id')),
       );
 
-  /// A playlist's name and its first page of tracks; call [loadMore] for the
-  /// rest (episodes and unavailable items are skipped).
-  static Future<TrackCollection> playlist(String token, String id) async {
+  /// Name and item count of a playlist — Spotify still hands these out for
+  /// other people's playlists (only the items are restricted).
+  static Future<({String name, int total})> playlistMeta(
+    String token,
+    String id,
+  ) async {
     final meta = await _get(
       token,
-      Uri.https('api.spotify.com', '/v1/playlists/$id', {'fields': 'name'}),
+      Uri.https('api.spotify.com', '/v1/playlists/$id', {
+        'fields': 'name,tracks.total,items.total',
+      }),
     );
+    final total =
+        ((meta['items'] as Map?)?['total'] ??
+                (meta['tracks'] as Map?)?['total'])
+            as num?;
+    return (
+      name: meta['name'] as String? ?? 'Playlist',
+      total: total?.toInt() ?? 0,
+    );
+  }
+
+  /// A playlist's name and its first page of tracks; call [loadMore] for the
+  /// rest (episodes and unavailable items are skipped). If Spotify refuses
+  /// the items (403: not the token owner's playlist), returns a [viaApp]
+  /// collection with just name and total.
+  static Future<TrackCollection> playlist(String token, String id) async {
+    final meta = await playlistMeta(token, id);
     final col = TrackCollection(
       kind: 'Playlist',
-      name: meta['name'] as String? ?? 'Playlist',
+      name: meta.name,
       id: id,
       tracks: [],
-      total: 0,
+      total: meta.total,
       nextOffset: 0,
     );
-    await loadMore(token, col);
+    try {
+      await loadMore(token, col);
+    } on SpotifyApiException catch (e) {
+      if (e.status != 403) rethrow;
+      return TrackCollection(
+        kind: 'Playlist',
+        name: meta.name,
+        id: id,
+        tracks: [],
+        total: meta.total,
+        viaApp: true,
+      );
+    }
     return col;
   }
 

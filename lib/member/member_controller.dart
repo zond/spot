@@ -432,10 +432,15 @@ class MemberController extends ChangeNotifier {
   }
 
   /// Adds a whole playlist as one queue entry; the host reads it live.
-  Future<void> enqueuePlaylist(String id, String name, int total) async {
+  Future<void> enqueuePlaylist(
+    String id,
+    String name,
+    int total, {
+    bool viaApp = false,
+  }) async {
     final item = QueueItem(
       id: const Uuid().v4(),
-      playlist: PlaylistRef(id: id, name: name, total: total),
+      playlist: PlaylistRef(id: id, name: name, total: total, viaApp: viaApp),
     );
     await _send(MsgType.enqueue, {'item': item.toJson()});
   }

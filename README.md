@@ -40,10 +40,14 @@ A fair, shared Spotify queue for parties.
   to the Home Screen (Android), Spot is a Web Share Target, so it appears in
   Spotify's Share menu directly. **Which playlists can be read**: since
   Spotify's 2026 rules, `GET /playlists/{id}/items` only works for playlists
-  the token's user *owns or collaborates on* — so with the host token, only
-  the host's own playlists and collaborative playlists the host has joined
-  (members: ⋯ → *Invite collaborators* → let the host join). Others get a
-  403 ("public" no longer matters); songs can still be added via search.
+  the token's user *owns or collaborates on* — so only the host's own and
+  collaborative playlists can be *listed*. Any other playlist can still be
+  queued: Spotify hands out its name and length, and the host plays it **by
+  index through the Spotify app** (`skipToIndex`), learning each track from
+  the player state as it starts. Such entries show "via Spotify app"; their
+  songs aren't listed on the member page. Songs are cut ~0.7 s before their
+  end (`Config.preemptEnd`) so Spotify never continues the context or
+  autoplays something foreign.
 - **Shuffle / repeat** (per member): shuffle picks randomly with every song —
   loose or inside a playlist — equally likely (a 40-song playlist is 40
   tickets); repeat keeps entries after playing them and wraps around (a

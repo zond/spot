@@ -42,6 +42,12 @@ abstract final class Config {
   /// itself; a host that sees a newer member asks to be updated.
   static const protocolVersion = 2;
 
+  /// Songs are cut this long before their end and the next one started, so
+  /// Spotify never gets to continue a playlist context / autoplay something
+  /// foreign. App Remote's pause+play round trip is ~200–400 ms and our
+  /// position is extrapolated between state events, hence the margin.
+  static const preemptEnd = Duration(milliseconds: 700);
+
   /// Build stamp of the member web app (set by deploy-web.sh via
   /// --dart-define=BUILD_TS=...), shown in the footer so stale caches are
   /// easy to spot.
