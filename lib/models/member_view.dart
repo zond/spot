@@ -95,6 +95,7 @@ class MemberView {
     required this.sentAt,
     this.notice,
     this.noticeAt = 0,
+    this.pausedReason,
   });
 
   final String hostName;
@@ -112,6 +113,10 @@ class MemberView {
   final String? notice;
   final int noticeAt;
 
+  /// Non-null while the party is paused because Spotify was taken over
+  /// (another device, or the Spotify app on the host phone): the reason.
+  final String? pausedReason;
+
   bool get hasValidToken =>
       token != null && tokenExpiresAt > DateTime.now().millisecondsSinceEpoch;
 
@@ -126,6 +131,7 @@ class MemberView {
         's': sentAt,
         if (notice != null) 'n': notice,
         if (notice != null) 'na': noticeAt,
+        if (pausedReason != null) 'pr': pausedReason,
       };
 
   factory MemberView.fromJson(Map<String, dynamic> j) => MemberView(
@@ -145,5 +151,6 @@ class MemberView {
         sentAt: (j['s'] as num?)?.toInt() ?? 0,
         notice: j['n'] as String?,
         noticeAt: (j['na'] as num?)?.toInt() ?? 0,
+        pausedReason: j['pr'] as String?,
       );
 }

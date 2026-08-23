@@ -488,6 +488,30 @@ class _PartyScreenState extends State<PartyScreen> {
             waiting: v == null,
             onSkip: v?.now == null ? null : () => _skip(v!.now!),
           ),
+          if (v?.pausedReason != null)
+            Card(
+              color: theme.colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.pause_circle_outline,
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        v!.pausedReason!,
+                        style: TextStyle(
+                          color: theme.colorScheme.onErrorContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (v?.notice != null &&
               DateTime.now().millisecondsSinceEpoch - v!.noticeAt < 90000)
             Padding(

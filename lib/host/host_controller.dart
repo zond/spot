@@ -792,6 +792,13 @@ class HostController extends ChangeNotifier {
       sentAt: now,
       notice: notice,
       noticeAt: noticeAt,
+      pausedReason: !takenOver
+          ? null
+          : takenOverLocally
+              ? 'Party paused: someone is playing other music in the Spotify '
+                  'app on the host phone. The host can take it back.'
+              : 'Party paused: Spotify is playing on "$takenOverBy" (one '
+                  'stream per account). The host can take it back.',
     );
   }
 
