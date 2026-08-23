@@ -129,6 +129,21 @@ an App Remote consent dialog.
 Served from `https://zond.github.io/spot/` (the `Config.webBaseUrl` the QR
 codes point to).
 
+## Installing the member page (optional, recommended)
+
+The member page works as a plain tab, but installed to the home screen it is
+nicer: notifications (how the host reaches you) are more reliable, Spotify's
+Share menu gets a "Spot" entry for sending playlists/songs, and it opens like
+an app. The page offers it itself on phones:
+
+- **Android Chrome**: tap the "Install Spot on your home screen" line on the
+  join/party screen (or Chrome menu ⋮ → *Add to Home screen* / *Install app*).
+- **iPhone/iPad**: Safari Share (square with arrow) → *Add to Home Screen*,
+  then open Spot from the home screen — on iOS web push only works that way.
+
+Installed or not, the page remembers the last host, so next time it just
+rejoins; scanning a new host's QR switches party.
+
 ## Joining (members)
 
 Scan the host QR with the phone camera → page opens → enter a name → *Join* →

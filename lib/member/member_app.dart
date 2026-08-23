@@ -217,6 +217,7 @@ class _JoinScreenState extends State<JoinScreen> {
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ],
+          const InstallHint(),
         ],
       ),
     );
@@ -744,6 +745,7 @@ class _PartyScreenState extends State<PartyScreen> {
             'song to open it in Spotify.',
             style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
           ),
+          const InstallHint(),
         ],
       ),
     );
