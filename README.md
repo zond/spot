@@ -17,11 +17,14 @@ A fair, shared Spotify queue for parties.
   remaining time is charged to the *skipper's* airtime (kept as a debt and
   applied on their next queued song if they have nothing queued), while the
   song's owner only paid for what was heard.
-- **Account taken over**: Spotify allows one stream per account, so if someone
-  else starts playing on the same account the host detects it (asks Spotify
-  which device is active when it hears a foreign track), pauses the party,
-  shows who took over with a *Take back* button (and an optional auto-reclaim
-  after 30 s), and tells members. Playback resumes where it stopped.
+- **Taken over**: Spotify allows one stream per account, so if someone else
+  starts playing on the same account — on another device, or in the Spotify
+  app on the host phone itself — the host notices (a foreign track appears;
+  it asks Spotify which device is active, and a mid-song switch on this phone
+  can only be a person, since autoplay only happens after a song ends),
+  pauses the party, shows who/where with a *Take back* button (and an optional
+  auto-reclaim after 30 s), and tells members. Playback resumes where it
+  stopped.
 - **Listeners**: everyone whose page has talked to the host recently gets
   state pushes (member pages ping every 4 min while visible); after 10 silent
   minutes the host stops pushing to them, and they get a fresh snapshot the

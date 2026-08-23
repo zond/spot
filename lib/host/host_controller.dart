@@ -60,6 +60,10 @@ class HostController extends ChangeNotifier {
   String? ourDeviceName;
   bool takenOver = false;
   String? takenOverBy;
+
+  /// True when the takeover happened in the Spotify app on this very phone
+  /// (someone started other music here) rather than on another device.
+  bool takenOverLocally = false;
   bool autoReclaim = false;
   Timer? _reclaimTimer;
   bool _checkingDevice = false;
@@ -212,6 +216,7 @@ class HostController extends ChangeNotifier {
     _reclaimTimer?.cancel();
     _reclaimTimer = null;
     takenOver = false;
+    takenOverLocally = false;
     takenOverBy = null;
     if (spotifyConnected) {
       try {
@@ -449,32 +454,45 @@ class HostController extends ChangeNotifier {
   Future<void> _onForeignTrack() async {
     if (_checkingDevice || takenOver || _expectedUri == null) return;
     _checkingDevice = true;
+    // Spotify only autoplays something else *after* our song reached its end;
+    // a foreign track while we were mid-song means a person chose it.
+    final nearEnd = _durationMs > 0 && positionMs >= _durationMs - 5000;
     try {
       final token = await auth.validToken();
       final snap = token == null ? null : await SpotifyWebApi.player(token);
       final d = snap?.device;
       if (d != null && _ourDeviceId != null && d.id != _ourDeviceId) {
-        _enterTakenOver(d.name);
+        _enterTakenOver(d.name, local: false);
         return;
       }
     } catch (_) {
-      // Can't tell; assume the usual end-of-track case.
+      // Can't tell which device; fall back to the position heuristic.
     } finally {
       _checkingDevice = false;
     }
-    if (!takenOver && _expectedUri != null) _finishCurrent();
+    if (takenOver || _expectedUri == null) return;
+    if (!nearEnd) {
+      _enterTakenOver('the Spotify app on this phone', local: true);
+      return;
+    }
+    _finishCurrent();
   }
 
-  void _enterTakenOver(String deviceName) {
+  void _enterTakenOver(String deviceName, {required bool local}) {
     takenOver = true;
+    takenOverLocally = local;
     takenOverBy = deviceName;
     paused = true;
     _positionMs = _lastPos;
     _positionAt = DateTime.now();
     _endCheck?.cancel();
     _startTimeout?.cancel();
-    status = 'Spotify is playing on $deviceName — party paused';
-    notice = 'Party paused: Spotify was taken over by $deviceName';
+    status = local
+        ? 'Someone started other music in Spotify here — party paused'
+        : 'Spotify is playing on $deviceName — party paused';
+    notice = local
+        ? 'Party paused: someone is playing other music in Spotify on the host phone'
+        : 'Party paused: Spotify was taken over by $deviceName';
     noticeAt = DateTime.now().millisecondsSinceEpoch;
     unawaited(HostForeground.update(status));
     notifyListeners();
@@ -489,6 +507,7 @@ class HostController extends ChangeNotifier {
 
   void _exitTakenOver() {
     takenOver = false;
+    takenOverLocally = false;
     takenOverBy = null;
     _reclaimTimer?.cancel();
     _reclaimTimer = null;

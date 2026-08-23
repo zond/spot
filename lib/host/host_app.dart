@@ -502,9 +502,13 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Spotify is playing on "${c.takenOverBy}" — the party '
-                      'is paused. (One stream per account: someone else is '
-                      'using this Spotify account.)',
+                      c.takenOverLocally
+                          ? 'Someone started other music in the Spotify app on '
+                                'this phone — the party is paused until you take '
+                                'it back (or it reclaims itself).'
+                          : 'Spotify is playing on "${c.takenOverBy}" — the '
+                                'party is paused. (One stream per account: '
+                                'someone else is using this Spotify account.)',
                       style: TextStyle(
                         color: theme.colorScheme.onErrorContainer,
                       ),
