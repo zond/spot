@@ -517,8 +517,9 @@ class MemberController extends ChangeNotifier {
   void _handleData(Map<String, dynamic> data) {
     final m = Message.fromData(data);
     if (m == null || !_seen.add(m.id)) return;
-    if (m.version > Config.protocolVersion)
+    if (m.version > Config.protocolVersion) {
       unawaited(_reloadForVersion(m.version));
+    }
     if (m.type == MsgType.resolved) {
       final rid = m.body['rid'];
       if (rid is String) {
