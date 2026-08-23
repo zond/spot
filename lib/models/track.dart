@@ -17,24 +17,25 @@ class Track {
   String get uri => 'spotify:track:$id';
   String get spotifyUrl => 'https://open.spotify.com/track/$id';
 
-  static String? idFromUri(String uri) =>
-      uri.startsWith('spotify:track:') ? uri.substring('spotify:track:'.length) : null;
+  static String? idFromUri(String uri) => uri.startsWith('spotify:track:')
+      ? uri.substring('spotify:track:'.length)
+      : null;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'n': name,
-        'a': artists,
-        'd': durationMs,
-        if (imageUrl != null) 'i': imageUrl,
-      };
+    'id': id,
+    'n': name,
+    'a': artists,
+    'd': durationMs,
+    if (imageUrl != null) 'i': imageUrl,
+  };
 
   factory Track.fromJson(Map<String, dynamic> j) => Track(
-        id: j['id'] as String,
-        name: j['n'] as String,
-        artists: j['a'] as String,
-        durationMs: (j['d'] as num).toInt(),
-        imageUrl: j['i'] as String?,
-      );
+    id: j['id'] as String,
+    name: j['n'] as String,
+    artists: j['a'] as String,
+    durationMs: (j['d'] as num).toInt(),
+    imageUrl: j['i'] as String?,
+  );
 
   /// Parses a track object from the Spotify Web API (e.g. search results).
   factory Track.fromSpotify(Map<String, dynamic> j) {

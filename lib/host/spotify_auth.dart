@@ -94,8 +94,9 @@ class SpotifyAuth extends ChangeNotifier {
 
   /// A token valid for at least [margin], refreshing if necessary. Null when
   /// not logged in.
-  Future<String?> validToken(
-      {Duration margin = Config.tokenRefreshMargin}) async {
+  Future<String?> validToken({
+    Duration margin = Config.tokenRefreshMargin,
+  }) async {
     if (_access != null &&
         _expiresAt != null &&
         _expiresAt!.isAfter(DateTime.now().add(margin))) {
@@ -132,12 +133,14 @@ class SpotifyAuth extends ChangeNotifier {
         await logout();
       }
       throw SpotifyAuthException(
-          'Spotify token request failed: ${resp.statusCode} ${resp.body}');
+        'Spotify token request failed: ${resp.statusCode} ${resp.body}',
+      );
     }
     final j = jsonDecode(resp.body) as Map<String, dynamic>;
     _access = j['access_token'] as String;
-    _expiresAt = DateTime.now()
-        .add(Duration(seconds: (j['expires_in'] as num? ?? 3600).toInt()));
+    _expiresAt = DateTime.now().add(
+      Duration(seconds: (j['expires_in'] as num? ?? 3600).toInt()),
+    );
     if (j['refresh_token'] is String) _refresh = j['refresh_token'] as String;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kAccess, _access!);
@@ -163,7 +166,9 @@ class SpotifyAuth extends ChangeNotifier {
     const chars =
         'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
     final rnd = Random.secure();
-    return List.generate(length, (_) => chars[rnd.nextInt(chars.length)])
-        .join();
+    return List.generate(
+      length,
+      (_) => chars[rnd.nextInt(chars.length)],
+    ).join();
   }
 }

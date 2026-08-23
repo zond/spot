@@ -14,7 +14,8 @@ class HostPush {
   Future<String?> init(void Function(Map<String, dynamic> data) onData) async {
     try {
       await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform);
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
       final messaging = FirebaseMessaging.instance;
       try {
         await messaging.requestPermission();

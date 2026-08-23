@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
+import '../config.dart';
+
 /// Message types exchanged over fcm-switch.
 abstract final class MsgType {
   // member -> host
@@ -43,15 +45,26 @@ abstract final class MsgType {
 /// JSON string under 'm'. 'id' lets receivers drop duplicates (a message can
 /// arrive both via push and via the inbox).
 class Message {
-  Message({required this.type, required this.body, String? id})
-      : id = id ?? const Uuid().v4();
+  Message({
+    required this.type,
+    required this.body,
+    String? id,
+    this.version = Config.protocolVersion,
+  }) : id = id ?? const Uuid().v4();
 
   final String type;
   final String id;
   final Map<String, dynamic> body;
 
-  Map<String, String> toData() =>
-      {'t': type, 'id': id, 'm': jsonEncode(body)};
+  /// Sender's [Config.protocolVersion] (1 for builds before it existed).
+  final int version;
+
+  Map<String, String> toData() => {
+    't': type,
+    'id': id,
+    'm': jsonEncode(body),
+    'v': '$version',
+  };
 
   static Message? fromData(Map<String, dynamic> data) {
     final t = data['t'];
@@ -61,7 +74,12 @@ class Message {
     try {
       final body = jsonDecode(m);
       if (body is! Map<String, dynamic>) return null;
-      return Message(type: t, id: id, body: body);
+      return Message(
+        type: t,
+        id: id,
+        body: body,
+        version: int.tryParse('${data['v'] ?? ''}') ?? 1,
+      );
     } catch (_) {
       return null;
     }

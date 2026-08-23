@@ -7,7 +7,9 @@ import '../config.dart';
 
 @JS('_spotGetToken')
 external JSPromise<JSString?> _jsGetToken(
-    web.ServiceWorkerRegistration reg, JSString vapidKey);
+  web.ServiceWorkerRegistration reg,
+  JSString vapidKey,
+);
 
 @JS('_spotOnMessage')
 external set _jsOnMessage(JSFunction? f);

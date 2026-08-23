@@ -55,6 +55,9 @@ class HostController extends ChangeNotifier {
   String? notice;
   int noticeAt = 0;
 
+  /// A member is running a newer build than this host: ask for an update.
+  int? newerMemberVersion;
+
   // ---- Spotify taken over by another device (one stream per account)
   /// Spotify Connect id/name of *this* phone, learnt the first time our track
   /// is heard playing.
@@ -755,6 +758,11 @@ class HostController extends ChangeNotifier {
 
   void _handle(Message m) {
     if (!_seen.add(m.id)) return;
+    if (m.version > Config.protocolVersion &&
+        (newerMemberVersion ?? 0) < m.version) {
+      newerMemberVersion = m.version;
+      notifyListeners();
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
     final uuid = m.body['uuid'];
     if (uuid is! String) return;

@@ -21,8 +21,8 @@ class SwitchException implements Exception {
 /// on message id.
 class SwitchClient {
   SwitchClient({http.Client? client, this.base = Config.functionsBase})
-      : _http = client ?? http.Client(),
-        _ownsClient = client == null;
+    : _http = client ?? http.Client(),
+      _ownsClient = client == null;
 
   http.Client _http;
   final bool _ownsClient;

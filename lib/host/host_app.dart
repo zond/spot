@@ -496,6 +496,21 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
               ),
             ),
           ),
+          if (c.newerMemberVersion != null)
+            Card(
+              color: theme.colorScheme.tertiaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'A member is on a newer Spot (v${c.newerMemberVersion}) than '
+                  'this host (v${Config.protocolVersion}). Please install the '
+                  'latest Spot.apk from the shared Drive/Spot folder.',
+                  style: TextStyle(
+                    color: theme.colorScheme.onTertiaryContainer,
+                  ),
+                ),
+              ),
+            ),
           if (c.takenOver)
             Card(
               color: theme.colorScheme.errorContainer,

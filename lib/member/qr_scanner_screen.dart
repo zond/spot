@@ -34,7 +34,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       ..style.width = '100%'
       ..style.height = '100%'
       ..style.objectFit = 'cover';
-    ui_web.platformViewRegistry.registerViewFactory(_viewId, (int id) => _video);
+    ui_web.platformViewRegistry.registerViewFactory(
+      _viewId,
+      (int id) => _video,
+    );
     _startCamera();
   }
 
@@ -49,7 +52,9 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       _video.srcObject = _stream;
       setState(() => _scanning = true);
       _scanTimer = Timer.periodic(
-          const Duration(milliseconds: 500), (_) => _scan());
+        const Duration(milliseconds: 500),
+        (_) => _scan(),
+      );
     } catch (e) {
       setState(() => _error = 'Camera access denied');
     }
@@ -83,8 +88,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(32),
-                child: Text(_error!,
-                    style: const TextStyle(color: Colors.redAccent)),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
               ),
             )
           : Stack(
@@ -98,7 +105,8 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           border: Border.fromBorderSide(
-                              BorderSide(color: Colors.greenAccent, width: 2)),
+                            BorderSide(color: Colors.greenAccent, width: 2),
+                          ),
                         ),
                       ),
                     ),

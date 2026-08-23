@@ -290,6 +290,19 @@ class MemberController extends ChangeNotifier {
     }
   }
 
+  /// The host runs a newer build than this page: fetch the new web build
+  /// (once per version, so a lagging deploy can't cause a reload loop).
+  Future<void> _reloadForVersion(int v) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      const key = 'member_reloaded_for_protocol';
+      if ((prefs.getInt(key) ?? 0) >= v) return;
+      await prefs.setInt(key, v);
+      await _dropCaches();
+      web.window.location.reload();
+    } catch (_) {}
+  }
+
   static const _versionKey = 'member_app_version';
   DateTime _lastVersionCheck = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -504,6 +517,8 @@ class MemberController extends ChangeNotifier {
   void _handleData(Map<String, dynamic> data) {
     final m = Message.fromData(data);
     if (m == null || !_seen.add(m.id)) return;
+    if (m.version > Config.protocolVersion)
+      unawaited(_reloadForVersion(m.version));
     if (m.type == MsgType.resolved) {
       final rid = m.body['rid'];
       if (rid is String) {

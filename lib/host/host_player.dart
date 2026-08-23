@@ -34,10 +34,11 @@ class AppRemotePlayer implements HostPlayer {
       ).timeout(const Duration(seconds: 30));
     } on TimeoutException {
       throw StateError(
-          'The Spotify app did not answer. Make sure you are logged in to '
-          'Spotify with the app-remote-control permission (log out and in '
-          'again in Spot if you logged in before), open Spotify once, then '
-          'try again.');
+        'The Spotify app did not answer. Make sure you are logged in to '
+        'Spotify with the app-remote-control permission (log out and in '
+        'again in Spot if you logged in before), open Spotify once, then '
+        'try again.',
+      );
     }
     if (!ok) throw StateError('Could not connect to the Spotify app');
     // Single-track playback must not loop or shuffle; the scheduler decides

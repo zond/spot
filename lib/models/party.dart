@@ -27,8 +27,9 @@ class PlaylistRef {
   final Set<String> playedIds;
 
   /// Songs left before this entry is "done" (used as shuffle weight).
-  int remaining(bool shuffle) =>
-      shuffle ? (total - playedIds.length).clamp(0, total) : (total - nextIndex).clamp(0, total);
+  int remaining(bool shuffle) => shuffle
+      ? (total - playedIds.length).clamp(0, total)
+      : (total - nextIndex).clamp(0, total);
 
   bool done(bool shuffle) => total == 0 || remaining(shuffle) == 0;
 
@@ -38,27 +39,27 @@ class PlaylistRef {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'n': name,
-        'c': total,
-        if (nextIndex > 0) 'i': nextIndex,
-        if (playedIds.isNotEmpty) 'p': playedIds.toList(),
-      };
+    'id': id,
+    'n': name,
+    'c': total,
+    if (nextIndex > 0) 'i': nextIndex,
+    if (playedIds.isNotEmpty) 'p': playedIds.toList(),
+  };
 
   factory PlaylistRef.fromJson(Map<String, dynamic> j) => PlaylistRef(
-        id: j['id'] as String,
-        name: j['n'] as String? ?? 'Playlist',
-        total: (j['c'] as num?)?.toInt() ?? 0,
-        nextIndex: (j['i'] as num?)?.toInt() ?? 0,
-        playedIds: ((j['p'] as List?) ?? const []).cast<String>().toSet(),
-      );
+    id: j['id'] as String,
+    name: j['n'] as String? ?? 'Playlist',
+    total: (j['c'] as num?)?.toInt() ?? 0,
+    nextIndex: (j['i'] as num?)?.toInt() ?? 0,
+    playedIds: ((j['p'] as List?) ?? const []).cast<String>().toSet(),
+  );
 }
 
 /// One entry in a member's personal queue: a song, or a whole playlist that
 /// plays all its songs (one per turn) before the queue moves past it.
 class QueueItem {
   QueueItem({required this.id, this.track, this.playlist})
-      : assert((track == null) != (playlist == null));
+    : assert((track == null) != (playlist == null));
 
   final String id;
   final Track? track;
@@ -77,16 +78,18 @@ class QueueItem {
   String get title => track?.name ?? playlist!.name;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        if (track != null) 't': track!.toJson(),
-        if (playlist != null) 'pl': playlist!.toJson(),
-        if (playedThisCycle) 'x': true,
-      };
+    'id': id,
+    if (track != null) 't': track!.toJson(),
+    if (playlist != null) 'pl': playlist!.toJson(),
+    if (playedThisCycle) 'x': true,
+  };
 
   factory QueueItem.fromJson(Map<String, dynamic> j) {
     final item = QueueItem(
       id: j['id'] as String,
-      track: j['t'] == null ? null : Track.fromJson(j['t'] as Map<String, dynamic>),
+      track: j['t'] == null
+          ? null
+          : Track.fromJson(j['t'] as Map<String, dynamic>),
       playlist: j['pl'] == null
           ? null
           : PlaylistRef.fromJson(j['pl'] as Map<String, dynamic>),
@@ -134,16 +137,16 @@ class Member {
       queue.any((q) => q.track != null || (q.playlist?.total ?? 0) > 0);
 
   Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'name': name,
-        'joinedAt': joinedAt,
-        'playedMs': playedMs,
-        'lastSeen': lastSeen,
-        'queue': queue.map((q) => q.toJson()).toList(),
-        if (shuffle) 'shuffle': true,
-        if (repeat) 'repeat': true,
-        if (cursor > 0) 'cursor': cursor,
-      };
+    'uuid': uuid,
+    'name': name,
+    'joinedAt': joinedAt,
+    'playedMs': playedMs,
+    'lastSeen': lastSeen,
+    'queue': queue.map((q) => q.toJson()).toList(),
+    if (shuffle) 'shuffle': true,
+    if (repeat) 'repeat': true,
+    if (cursor > 0) 'cursor': cursor,
+  };
 
   factory Member.fromJson(Map<String, dynamic> j) {
     final m = Member(
@@ -181,18 +184,18 @@ class Listener {
   int debtMs;
 
   Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'name': name,
-        'lastSeen': lastSeen,
-        if (debtMs > 0) 'debtMs': debtMs,
-      };
+    'uuid': uuid,
+    'name': name,
+    'lastSeen': lastSeen,
+    if (debtMs > 0) 'debtMs': debtMs,
+  };
 
   factory Listener.fromJson(Map<String, dynamic> j) => Listener(
-        uuid: j['uuid'] as String,
-        name: j['name'] as String,
-        lastSeen: (j['lastSeen'] as num?)?.toInt() ?? 0,
-        debtMs: (j['debtMs'] as num?)?.toInt() ?? 0,
-      );
+    uuid: j['uuid'] as String,
+    name: j['name'] as String,
+    lastSeen: (j['lastSeen'] as num?)?.toInt() ?? 0,
+    debtMs: (j['debtMs'] as num?)?.toInt() ?? 0,
+  );
 }
 
 /// Host-side party state and the fairness policy.
@@ -232,8 +235,11 @@ class Party {
     final l = _listeners[uuid];
     final n = (name ?? l?.name ?? '').trim();
     if (l == null) {
-      return _listeners[uuid] =
-          Listener(uuid: uuid, name: n.isEmpty ? 'Someone' : n, lastSeen: nowMs);
+      return _listeners[uuid] = Listener(
+        uuid: uuid,
+        name: n.isEmpty ? 'Someone' : n,
+        lastSeen: nowMs,
+      );
     }
     l.lastSeen = nowMs;
     if (n.isNotEmpty) l.name = n;
@@ -249,8 +255,11 @@ class Party {
   /// regardless: their queued songs still play.
   int pruneListeners(int nowMs, Duration maxAge) {
     final before = _listeners.length;
-    _listeners.removeWhere((uuid, l) =>
-        nowMs - l.lastSeen > maxAge.inMilliseconds && !_members.containsKey(uuid));
+    _listeners.removeWhere(
+      (uuid, l) =>
+          nowMs - l.lastSeen > maxAge.inMilliseconds &&
+          !_members.containsKey(uuid),
+    );
     return before - _listeners.length;
   }
 
@@ -262,10 +271,11 @@ class Party {
     var m = _members[uuid];
     if (m == null) {
       m = _members[uuid] = Member(
-          uuid: uuid,
-          name: l.name,
-          joinedAt: nowMs,
-          playedMs: maxPlayedMs + l.debtMs);
+        uuid: uuid,
+        name: l.name,
+        joinedAt: nowMs,
+        playedMs: maxPlayedMs + l.debtMs,
+      );
       l.debtMs = 0;
     }
     if (m.queue.any((q) => q.id == item.id)) return false;
@@ -287,13 +297,22 @@ class Party {
 
   /// Shuffle / repeat toggles (admits the member if needed, so the flags
   /// stick even before anything is queued).
-  void setModes(String uuid, String? name, int nowMs,
-      {bool? shuffle, bool? repeat}) {
+  void setModes(
+    String uuid,
+    String? name,
+    int nowMs, {
+    bool? shuffle,
+    bool? repeat,
+  }) {
     final l = touch(uuid, name, nowMs);
     var m = _members[uuid];
     if (m == null) {
       m = _members[uuid] = Member(
-          uuid: uuid, name: l.name, joinedAt: nowMs, playedMs: maxPlayedMs + l.debtMs);
+        uuid: uuid,
+        name: l.name,
+        joinedAt: nowMs,
+        playedMs: maxPlayedMs + l.debtMs,
+      );
       l.debtMs = 0;
     }
     if (shuffle != null) m.shuffle = shuffle;
@@ -328,7 +347,9 @@ class Party {
     m.queue
       ..clear()
       ..addAll(next);
-    final ci = currentId == null ? -1 : m.queue.indexWhere((q) => q.id == currentId);
+    final ci = currentId == null
+        ? -1
+        : m.queue.indexWhere((q) => q.id == currentId);
     m.cursor = ci < 0 ? 0 : ci;
     return true;
   }
@@ -415,8 +436,7 @@ class Party {
   /// restored on their next enqueue.
   int removeIdle({String? playing}) {
     final before = _members.length;
-    _members.removeWhere(
-        (uuid, m) => !m.hasSomethingToPlay && uuid != playing);
+    _members.removeWhere((uuid, m) => !m.hasSomethingToPlay && uuid != playing);
     return before - _members.length;
   }
 
@@ -441,9 +461,9 @@ class Party {
   }
 
   Map<String, dynamic> toJson() => {
-        'members': _members.values.map((m) => m.toJson()).toList(),
-        'listeners': _listeners.values.map((l) => l.toJson()).toList(),
-      };
+    'members': _members.values.map((m) => m.toJson()).toList(),
+    'listeners': _listeners.values.map((l) => l.toJson()).toList(),
+  };
 
   factory Party.fromJson(Map<String, dynamic> j) {
     final p = Party();

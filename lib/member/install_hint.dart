@@ -45,14 +45,14 @@ class _InstallHintState extends State<InstallHint> {
     final canPrompt = _jsCanPromptInstall();
     final text = canPrompt
         ? 'Install Spot on your home screen: notifications are more reliable, '
-            'and Spotify\'s Share menu gets a Spot entry.'
+              'and Spotify\'s Share menu gets a Spot entry.'
         : _isIOS
-            ? 'iPhone/iPad: tap Share (square with arrow) → "Add to Home '
-                'Screen", then open Spot from there — notifications only work '
-                'that way.'
-            : 'Add Spot to your home screen (Chrome menu ⋮ → "Add to Home '
-                'screen" / "Install app"): notifications are more reliable, '
-                'and Spotify\'s Share menu gets a Spot entry.';
+        ? 'iPhone/iPad: tap Share (square with arrow) → "Add to Home '
+              'Screen", then open Spot from there — notifications only work '
+              'that way.'
+        : 'Add Spot to your home screen (Chrome menu ⋮ → "Add to Home '
+              'screen" / "Install app"): notifications are more reliable, '
+              'and Spotify\'s Share menu gets a Spot entry.';
     return Padding(
       padding: const EdgeInsets.only(top: 16),
       child: InkWell(
@@ -60,8 +60,11 @@ class _InstallHintState extends State<InstallHint> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.install_mobile,
-                size: 18, color: canPrompt ? Colors.white70 : Colors.white54),
+            Icon(
+              Icons.install_mobile,
+              size: 18,
+              color: canPrompt ? Colors.white70 : Colors.white54,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(

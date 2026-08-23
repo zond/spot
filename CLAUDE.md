@@ -48,6 +48,9 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 - fcm-switch is used as-is (no server changes): everyone registers with a real
   FCM token; members therefore need notification permission to join.
 - Delivery is at-least-once (push + inbox); every receiver de-dups on message `id`.
+- Every message carries `v` = `Config.protocolVersion`; bump it when host and
+  member must match (member reloads itself on a newer host, host shows an
+  "update from Drive/Spot" banner on a newer member).
 - Every host→member message is a full personal snapshot (`MemberView`).
 - Fairness = least airtime first; airtime credited from actual playback
   position deltas. `Party` keeps *members* (something queued or playing) apart

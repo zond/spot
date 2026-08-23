@@ -30,22 +30,22 @@ class NowInfo {
       : min(track.durationMs, positionMs + max(0, nowMs - atMs));
 
   Map<String, dynamic> toJson() => {
-        't': track.toJson(),
-        'mu': memberUuid,
-        'mn': memberName,
-        'p': positionMs,
-        'at': atMs,
-        'pa': paused,
-      };
+    't': track.toJson(),
+    'mu': memberUuid,
+    'mn': memberName,
+    'p': positionMs,
+    'at': atMs,
+    'pa': paused,
+  };
 
   factory NowInfo.fromJson(Map<String, dynamic> j) => NowInfo(
-        track: Track.fromJson(j['t'] as Map<String, dynamic>),
-        memberUuid: j['mu'] as String,
-        memberName: j['mn'] as String,
-        positionMs: (j['p'] as num).toInt(),
-        atMs: (j['at'] as num).toInt(),
-        paused: j['pa'] as bool? ?? false,
-      );
+    track: Track.fromJson(j['t'] as Map<String, dynamic>),
+    memberUuid: j['mu'] as String,
+    memberName: j['mn'] as String,
+    positionMs: (j['p'] as num).toInt(),
+    atMs: (j['at'] as num).toInt(),
+    paused: j['pa'] as bool? ?? false,
+  );
 }
 
 /// Summary of another member.
@@ -65,20 +65,20 @@ class OtherInfo {
   final String? nextTrack;
 
   Map<String, dynamic> toJson() => {
-        'u': uuid,
-        'n': name,
-        'p': playedMs,
-        'q': queueLength,
-        if (nextTrack != null) 'x': nextTrack,
-      };
+    'u': uuid,
+    'n': name,
+    'p': playedMs,
+    'q': queueLength,
+    if (nextTrack != null) 'x': nextTrack,
+  };
 
   factory OtherInfo.fromJson(Map<String, dynamic> j) => OtherInfo(
-        uuid: j['u'] as String,
-        name: j['n'] as String,
-        playedMs: (j['p'] as num).toInt(),
-        queueLength: (j['q'] as num).toInt(),
-        nextTrack: j['x'] as String?,
-      );
+    uuid: j['u'] as String,
+    name: j['n'] as String,
+    playedMs: (j['p'] as num).toInt(),
+    queueLength: (j['q'] as num).toInt(),
+    nextTrack: j['x'] as String?,
+  );
 }
 
 /// The personalised state snapshot the host sends to one member. Every send is
@@ -129,42 +129,42 @@ class MemberView {
       token != null && tokenExpiresAt > DateTime.now().millisecondsSinceEpoch;
 
   Map<String, dynamic> toJson() => {
-        'h': hostName,
-        if (token != null) 'tk': token,
-        'te': tokenExpiresAt,
-        if (now != null) 'now': now!.toJson(),
-        'mp': myPlayedMs,
-        'mq': myQueue.map((q) => q.toJson()).toList(),
-        'o': others.map((o) => o.toJson()).toList(),
-        's': sentAt,
-        if (notice != null) 'n': notice,
-        if (notice != null) 'na': noticeAt,
-        if (pausedReason != null) 'pr': pausedReason,
-        if (shuffle) 'sh': true,
-        if (repeat) 'rp': true,
-        if (cursor > 0) 'cu': cursor,
-      };
+    'h': hostName,
+    if (token != null) 'tk': token,
+    'te': tokenExpiresAt,
+    if (now != null) 'now': now!.toJson(),
+    'mp': myPlayedMs,
+    'mq': myQueue.map((q) => q.toJson()).toList(),
+    'o': others.map((o) => o.toJson()).toList(),
+    's': sentAt,
+    if (notice != null) 'n': notice,
+    if (notice != null) 'na': noticeAt,
+    if (pausedReason != null) 'pr': pausedReason,
+    if (shuffle) 'sh': true,
+    if (repeat) 'rp': true,
+    if (cursor > 0) 'cu': cursor,
+  };
 
   factory MemberView.fromJson(Map<String, dynamic> j) => MemberView(
-        hostName: j['h'] as String? ?? 'Host',
-        token: j['tk'] as String?,
-        tokenExpiresAt: (j['te'] as num?)?.toInt() ?? 0,
-        now: j['now'] == null
-            ? null
-            : NowInfo.fromJson(j['now'] as Map<String, dynamic>),
-        myPlayedMs: (j['mp'] as num?)?.toInt() ?? 0,
-        myQueue: (j['mq'] as List? ?? const [])
-            .map((q) => QueueItem.fromJson(q as Map<String, dynamic>))
-            .toList(),
-        others: (j['o'] as List? ?? const [])
-            .map((o) => OtherInfo.fromJson(o as Map<String, dynamic>))
-            .toList(),
-        sentAt: (j['s'] as num?)?.toInt() ?? 0,
-        notice: j['n'] as String?,
-        noticeAt: (j['na'] as num?)?.toInt() ?? 0,
-        pausedReason: j['pr'] as String?,
-        shuffle: j['sh'] == true,
-        repeat: j['rp'] == true,
-        cursor: (j['cu'] as num?)?.toInt() ?? 0,
-      );
+    hostName: j['h'] as String? ?? 'Host',
+    token: j['tk'] as String?,
+    tokenExpiresAt: (j['te'] as num?)?.toInt() ?? 0,
+    now: j['now'] == null
+        ? null
+        : NowInfo.fromJson(j['now'] as Map<String, dynamic>),
+    myPlayedMs: (j['mp'] as num?)?.toInt() ?? 0,
+    myQueue: (j['mq'] as List? ?? const [])
+        .map((q) => QueueItem.fromJson(q as Map<String, dynamic>))
+        .toList(),
+    others: (j['o'] as List? ?? const [])
+        .map((o) => OtherInfo.fromJson(o as Map<String, dynamic>))
+        .toList(),
+    sentAt: (j['s'] as num?)?.toInt() ?? 0,
+    notice: j['n'] as String?,
+    noticeAt: (j['na'] as num?)?.toInt() ?? 0,
+    pausedReason: j['pr'] as String?,
+    shuffle: j['sh'] == true,
+    repeat: j['rp'] == true,
+    cursor: (j['cu'] as num?)?.toInt() ?? 0,
+  );
 }
