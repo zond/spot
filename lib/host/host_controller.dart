@@ -821,6 +821,28 @@ class HostController extends ChangeNotifier {
           notifyListeners();
           broadcast();
         }
+      case MsgType.resolve:
+        final rid = m.body['rid'];
+        final url = m.body['url'];
+        if (rid is! String || url is! String) return;
+        unawaited(() async {
+          String? full;
+          try {
+            full = await SpotifyLink.resolveShort(url);
+          } catch (_) {}
+          try {
+            await switchClient.send(
+              uuid,
+              Message(
+                type: MsgType.resolved,
+                body: {'rid': rid, 'url': ?full},
+              ).toData(),
+            );
+          } catch (e) {
+            lastError = 'Resolve reply: $e';
+            notifyListeners();
+          }
+        }());
       case MsgType.modes:
         party.setModes(
           uuid,

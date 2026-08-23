@@ -263,9 +263,15 @@ class _PartyScreenState extends State<PartyScreen> {
     final shared = c.takeSharedText();
     if (shared != null) {
       final link = SpotifyLink.parse(shared);
+      final short = SpotifyLink.shortUrl(shared);
       if (link != null) {
         _query.text = shared.trim();
         WidgetsBinding.instance.addPostFrameCallback((_) => _openLink(link));
+      } else if (short != null) {
+        _query.text = short;
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _resolveShort(short),
+        );
       }
     }
   }
@@ -280,6 +286,34 @@ class _PartyScreenState extends State<PartyScreen> {
     super.dispose();
   }
 
+  /// Spotify short share links (open.spotify.com/s/…) can't be followed
+  /// from a web page; the host does it for us, then we open the real link.
+  Future<void> _resolveShort(String url) async {
+    _debounce?.cancel();
+    final seq = ++_searchSeq;
+    setState(() {
+      _searching = true;
+      _searchError = null;
+      _results = const [];
+      _collection = null;
+    });
+    final full = await c.resolveShortLink(url);
+    if (!mounted || seq != _searchSeq) return;
+    if (full == null) {
+      setState(() {
+        _searching = false;
+        _searchError =
+            'Could not resolve that short link via the host. In '
+            'Spotify, open the playlist → ⋯ → Share → Copy link and paste '
+            'the full open.spotify.com/playlist/… link.';
+      });
+      return;
+    }
+    _query.text = full;
+    final link = SpotifyLink.parse(full);
+    if (link != null) await _openLink(link);
+  }
+
   /// Search as you type: wait for a pause in typing, ignore stale responses.
   /// A pasted Spotify link opens that track/playlist/album instead.
   void _onQueryChanged(String text) {
@@ -289,6 +323,14 @@ class _PartyScreenState extends State<PartyScreen> {
       _debounce = Timer(
         const Duration(milliseconds: 200),
         () => _openLink(link),
+      );
+      return;
+    }
+    final short = SpotifyLink.shortUrl(text);
+    if (short != null) {
+      _debounce = Timer(
+        const Duration(milliseconds: 200),
+        () => _resolveShort(short),
       );
       return;
     }
@@ -361,6 +403,8 @@ class _PartyScreenState extends State<PartyScreen> {
     if (q.isEmpty) return;
     final link = SpotifyLink.parse(q);
     if (link != null) return _openLink(link);
+    final short = SpotifyLink.shortUrl(q);
+    if (short != null) return _resolveShort(short);
     final seq = ++_searchSeq;
     setState(() {
       _searching = true;

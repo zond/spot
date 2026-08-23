@@ -27,6 +27,13 @@ abstract final class MsgType {
   /// {uuid, name, shuffle?, repeat?} — queue playback modes.
   static const modes = 'modes';
 
+  /// {uuid, name, rid, url} — please resolve this Spotify short link.
+  static const resolve = 'resolve';
+
+  // host -> member
+  /// {rid, url?} — the real URL behind a short link (null: couldn't).
+  static const resolved = 'resolved';
+
   // host -> member
   /// MemberView
   static const state = 'state';

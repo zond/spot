@@ -34,7 +34,9 @@ A fair, shared Spotify queue for parties.
   song, playlist, album (Share → Copy link in the Spotify app) — and Spot lists
   its tracks to add, or adds the **whole playlist as one queue entry**: it
   plays all its songs (one per turn) before the queue moves past it, and the
-  host reads the playlist live, so edits in Spotify are picked up. Installed
+  host reads the playlist live, so edits in Spotify are picked up. Spotify's short share links
+  (`open.spotify.com/s/…`, `spotify.link/…`) are resolved by the host phone
+  (a web page can't follow them). Installed
   to the Home Screen (Android), Spot is a Web Share Target, so it appears in
   Spotify's Share menu directly. Private and Spotify-curated playlists can't
   be read with the host token.

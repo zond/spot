@@ -58,6 +58,7 @@ class MemberController extends ChangeNotifier {
   bool _polling = false;
   bool _watchingVisibility = false;
   Timer? _pingTimer;
+  final _pendingResolves = <String, Completer<String?>>{};
   final _seen = SeenIds();
 
   String get displayHostName => view?.hostName ?? hostName ?? 'the host';
@@ -73,7 +74,10 @@ class MemberController extends ChangeNotifier {
       params['text'],
       params['title'],
     ].whereType<String>().join(' ');
-    if (SpotifyLink.parse(shared) != null) _sharedText = shared;
+    if (SpotifyLink.parse(shared) != null ||
+        SpotifyLink.shortUrl(shared) != null) {
+      _sharedText = shared;
+    }
     final joinParam = params['join'];
     if (joinParam != null && _uuidRe.hasMatch(joinParam)) {
       hostUuid = joinParam;
@@ -448,9 +452,32 @@ class MemberController extends ChangeNotifier {
   Future<void> skip(String trackId) =>
       _send(MsgType.skip, {'trackId': trackId});
 
+  /// Asks the host to follow a Spotify short share link and returns the real
+  /// URL (the host phone has no CORS limits). Null if it couldn't.
+  Future<String?> resolveShortLink(String url) async {
+    final rid = const Uuid().v4();
+    final completer = Completer<String?>();
+    _pendingResolves[rid] = completer;
+    try {
+      await _send(MsgType.resolve, {'rid': rid, 'url': url});
+      return await completer.future.timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      return null;
+    } finally {
+      _pendingResolves.remove(rid);
+    }
+  }
+
   void _handleData(Map<String, dynamic> data) {
     final m = Message.fromData(data);
     if (m == null || !_seen.add(m.id)) return;
+    if (m.type == MsgType.resolved) {
+      final rid = m.body['rid'];
+      if (rid is String) {
+        _pendingResolves[rid]?.complete(m.body['url'] as String?);
+      }
+      return;
+    }
     if (m.type != MsgType.state) return;
     try {
       final v = MemberView.fromJson(m.body);
