@@ -99,6 +99,7 @@ class MemberView {
     this.shuffle = false,
     this.repeat = false,
     this.cursor = 0,
+    this.pausedByHost = false,
   });
 
   final String hostName;
@@ -125,6 +126,9 @@ class MemberView {
   final bool repeat;
   final int cursor;
 
+  /// The host paused me (out of the rotation, queue kept) — rejoin explicitly.
+  final bool pausedByHost;
+
   bool get hasValidToken =>
       token != null && tokenExpiresAt > DateTime.now().millisecondsSinceEpoch;
 
@@ -143,6 +147,7 @@ class MemberView {
     if (shuffle) 'sh': true,
     if (repeat) 'rp': true,
     if (cursor > 0) 'cu': cursor,
+    if (pausedByHost) 'pb': true,
   };
 
   factory MemberView.fromJson(Map<String, dynamic> j) => MemberView(
@@ -166,5 +171,6 @@ class MemberView {
     shuffle: j['sh'] == true,
     repeat: j['rp'] == true,
     cursor: (j['cu'] as num?)?.toInt() ?? 0,
+    pausedByHost: j['pb'] == true,
   );
 }

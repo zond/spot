@@ -560,6 +560,32 @@ class _PartyScreenState extends State<PartyScreen> {
             waiting: v == null,
             onSkip: v?.now == null ? null : () => _skip(v!.now!),
           ),
+          if (v?.pausedByHost == true)
+            Card(
+              color: theme.colorScheme.tertiaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'The host paused you while you were away: your queue is '
+                      'kept but not played, and you are hidden from the others. '
+                      'Back in the room?',
+                      style: TextStyle(
+                        color: theme.colorScheme.onTertiaryContainer,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: c.rejoin,
+                      icon: const Icon(Icons.login, size: 18),
+                      label: const Text('Rejoin the party'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (v?.pausedReason != null)
             Card(
               color: theme.colorScheme.errorContainer,

@@ -651,18 +651,22 @@ class _MemberTile extends StatelessWidget {
       children: [
         ListTile(
           dense: true,
-          leading: const Icon(Icons.person_remove_outlined),
-          title: const Text('Remove member and their queue'),
-          subtitle: const Text('For someone who left with a live queue'),
+          leading: const Icon(Icons.visibility_off_outlined),
+          title: const Text('Hide while away'),
+          subtitle: const Text(
+            'Out of the rotation and invisible to everyone; queue kept. '
+            'They come back by tapping Rejoin on their own page.',
+          ),
           onTap: () async {
             final yes = await showDialog<bool>(
               context: context,
               builder: (ctx) => AlertDialog(
-                title: Text('Remove ${member.name}?'),
+                title: Text('Hide ${member.name} while away?'),
                 content: Text(
                   'Their ${member.queue.length} queued entr${member.queue.length == 1 ? 'y' : 'ies'} '
-                  'disappear${controller.currentMember?.uuid == member.uuid ? ' and their playing song is skipped' : ''}. '
-                  'They can rejoin and queue again any time.',
+                  'are kept but not played'
+                  '${controller.currentMember?.uuid == member.uuid ? ' (their song that is playing now finishes)' : ''}. '
+                  'Only they can rejoin, from their page.',
                 ),
                 actions: [
                   TextButton(
@@ -671,12 +675,12 @@ class _MemberTile extends StatelessWidget {
                   ),
                   FilledButton(
                     onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Remove'),
+                    child: const Text('Hide'),
                   ),
                 ],
               ),
             );
-            if (yes == true) controller.kickMember(member.uuid);
+            if (yes == true) controller.parkMember(member.uuid);
           },
         ),
         if (member.queue.isEmpty)

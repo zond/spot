@@ -9,8 +9,10 @@ Track t(String id, int ms) =>
 
 QueueItem q(String id, int ms) => QueueItem(id: id, track: t(id, ms));
 
-QueueItem pl(String id, String name, int total) =>
-    QueueItem(id: id, playlist: PlaylistRef(id: 'pl-$id', name: name, total: total));
+QueueItem pl(String id, String name, int total) => QueueItem(
+  id: id,
+  playlist: PlaylistRef(id: 'pl-$id', name: name, total: total),
+);
 
 /// Plays one turn for the least-airtime member: picks, "plays" (credits the
 /// duration, or 1 s for playlist songs), commits. Returns (member uuid, entry).
@@ -64,18 +66,20 @@ void main() {
     expect(turn(p, rng)!.$2.id, 'a2');
   });
 
-  test('joining only makes you a listener; queuing admits you at the maximum',
-      () {
-    final p = Party();
-    p.touch('c', 'C', 1);
-    expect(p.members, isEmpty);
-    p.enqueue('a', 'A', q('a1', 1), 2);
-    p.enqueue('b', 'B', q('b1', 1), 2);
-    p.credit('a', 300000);
-    p.credit('b', 200000);
-    p.enqueue('c', 'C', q('c1', 1), 3);
-    expect(p.member('c')!.playedMs, 300000);
-  });
+  test(
+    'joining only makes you a listener; queuing admits you at the maximum',
+    () {
+      final p = Party();
+      p.touch('c', 'C', 1);
+      expect(p.members, isEmpty);
+      p.enqueue('a', 'A', q('a1', 1), 2);
+      p.enqueue('b', 'B', q('b1', 1), 2);
+      p.credit('a', 300000);
+      p.credit('b', 200000);
+      p.enqueue('c', 'C', q('c1', 1), 3);
+      expect(p.member('c')!.playedMs, 300000);
+    },
+  );
 
   test('idle members are dropped and come back at the maximum', () {
     final p = Party();
@@ -112,8 +116,7 @@ void main() {
     expect(turn(p, rng), isNull, reason: 'all consumed (repeat off)');
   });
 
-  test('in order + repeat: a finished playlist restarts next time around',
-      () {
+  test('in order + repeat: a finished playlist restarts next time around', () {
     final p = Party();
     p.setModes('a', 'A', 1, repeat: true);
     p.enqueue('a', 'A', pl('P', 'Mix', 2), 1);
@@ -191,6 +194,29 @@ void main() {
     expect(p.pruneListeners(12 * 60000, tenMin), 1);
     expect(p.listener('z'), isNotNull);
   });
+
+  test(
+    'parking hides the member, keeps the queue; only rejoin brings them back',
+    () {
+      final p = Party();
+      p.enqueue('a', 'A', q('a1', 1000), 1);
+      p.enqueue('a', 'A', q('a2', 1000), 1);
+      p.enqueue('b', 'B', q('b1', 1000), 2);
+      p.credit('b', 500000);
+      expect(p.park('a'), isTrue);
+      expect(p.member('a'), isNull);
+      expect(p.candidates().map((m) => m.uuid), ['b']);
+      p.touch('a', 'A', 9); // pings don't bring them back
+      p.enqueue('a', 'A', q('a3', 1000), 9); // edits apply to the kept queue
+      expect(p.member('a'), isNull);
+      expect(p.parkedMember('a')!.queue.length, 3);
+      expect(p.unpark('a', 10), isTrue);
+      expect(p.member('a')!.queue.length, 3);
+      expect(p.member('a')!.playedMs, 500000, reason: 'at least the maximum');
+      final back = Party.fromJson(p.toJson());
+      expect(back.member('a')!.queue.length, 3);
+    },
+  );
 
   test('json round trip incl. playlist entries, modes and cursor', () {
     final p = Party();

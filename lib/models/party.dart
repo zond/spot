@@ -232,7 +232,6 @@ class Party {
   /// Records that [uuid] is around (any message does this) and keeps the
   /// display name current.
   Listener touch(String uuid, String? name, int nowMs) {
-    unpark(uuid, nowMs); // any sign of life brings a parked member back
     final l = _listeners[uuid];
     final n = (name ?? l?.name ?? '').trim();
     if (l == null) {
@@ -269,7 +268,7 @@ class Party {
   /// false if the item id was already queued (duplicate delivery).
   bool enqueue(String uuid, String? name, QueueItem item, int nowMs) {
     final l = touch(uuid, name, nowMs);
-    var m = _members[uuid];
+    var m = _members[uuid] ?? _parked[uuid];
     if (m == null) {
       m = _members[uuid] = Member(
         uuid: uuid,
@@ -286,7 +285,7 @@ class Party {
   }
 
   bool dequeue(String uuid, String itemId) {
-    final m = _members[uuid];
+    final m = _members[uuid] ?? _parked[uuid];
     if (m == null) return false;
     final idx = m.queue.indexWhere((q) => q.id == itemId);
     if (idx < 0) return false;
@@ -306,7 +305,7 @@ class Party {
     bool? repeat,
   }) {
     final l = touch(uuid, name, nowMs);
-    var m = _members[uuid];
+    var m = _members[uuid] ?? _parked[uuid];
     if (m == null) {
       m = _members[uuid] = Member(
         uuid: uuid,
@@ -332,7 +331,7 @@ class Party {
   /// keep their relative order at the end (they were added after the member
   /// dragged). Returns true if the order changed.
   bool reorder(String uuid, List<String> itemIds) {
-    final m = _members[uuid];
+    final m = _members[uuid] ?? _parked[uuid];
     if (m == null) return false;
     final byId = {for (final q in m.queue) q.id: q};
     final next = <QueueItem>[
@@ -433,7 +432,8 @@ class Party {
   }
 
   /// Members the host set aside (left the room with a live queue): out of the
-  /// rotation, queue/modes/position kept; restored on their next message.
+  /// rotation and invisible to everyone else, queue/modes/position kept.
+  /// Only an explicit rejoin from their own page brings them back.
   final Map<String, Member> _parked = {};
   Iterable<Member> get parked => _parked.values;
   Member? parkedMember(String uuid) => _parked[uuid];
@@ -488,6 +488,7 @@ class Party {
   Map<String, dynamic> toJson() => {
     'members': _members.values.map((m) => m.toJson()).toList(),
     'listeners': _listeners.values.map((l) => l.toJson()).toList(),
+    'parked': _parked.values.map((m) => m.toJson()).toList(),
   };
 
   factory Party.fromJson(Map<String, dynamic> j) {
@@ -499,6 +500,10 @@ class Party {
     for (final l in (j['listeners'] as List? ?? const [])) {
       final listener = Listener.fromJson(l as Map<String, dynamic>);
       p._listeners[listener.uuid] = listener;
+    }
+    for (final m in (j['parked'] as List? ?? const [])) {
+      final member = Member.fromJson(m as Map<String, dynamic>);
+      p._parked[member.uuid] = member;
     }
     return p;
   }

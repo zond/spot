@@ -707,20 +707,14 @@ class HostController extends ChangeNotifier {
     _finishCurrent();
   }
 
-  /// Removes a member and their whole queue (e.g. someone who left with a
-  /// live queue). If their song is playing, it is skipped.
-  void kickMember(String memberUuid) {
-    final name = party.member(memberUuid)?.name ?? 'Member';
-    if (!party.removeMember(memberUuid)) return;
-    notice = '$name was removed by the host';
-    noticeAt = DateTime.now().millisecondsSinceEpoch;
+  /// Sets a member aside (someone who left the room with a live queue):
+  /// invisible to everyone, queue kept, their playing song (if any) finishes
+  /// undisturbed. Only an explicit rejoin from their page brings them back.
+  void parkMember(String memberUuid) {
+    if (!party.park(memberUuid)) return;
     unawaited(_persistParty());
     notifyListeners();
-    if (currentMember?.uuid == memberUuid && !interlude) {
-      _finishCurrent();
-    } else {
-      broadcast();
-    }
+    broadcast();
   }
 
   void removeQueued(String memberUuid, String itemId) {
@@ -867,6 +861,15 @@ class HostController extends ChangeNotifier {
             notifyListeners();
           }
         }());
+      case MsgType.rejoin:
+        if (party.unpark(uuid, now)) {
+          unawaited(_persistParty());
+          notifyListeners();
+          _maybePlayNext();
+          broadcast();
+        } else {
+          unawaited(_sendView(uuid));
+        }
       case MsgType.modes:
         party.setModes(
           uuid,
@@ -923,7 +926,9 @@ class HostController extends ChangeNotifier {
   MemberView? viewFor(String uuid) {
     if (party.listener(uuid) == null) return null;
     // Not an active member = nothing queued, airtime at the party maximum.
-    final me = party.member(uuid);
+    // A parked member still sees their kept queue (and a rejoin button).
+    final parked = party.parkedMember(uuid);
+    final me = party.member(uuid) ?? parked;
     final now = DateTime.now().millisecondsSinceEpoch;
     final cur = current;
     final curMember = currentMember;
@@ -946,6 +951,7 @@ class HostController extends ChangeNotifier {
       shuffle: me?.shuffle ?? false,
       repeat: me?.repeat ?? false,
       cursor: me?.cursor ?? 0,
+      pausedByHost: parked != null,
       others: [
         for (final m in party.members)
           if (m.uuid != uuid)

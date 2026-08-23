@@ -498,6 +498,9 @@ class MemberController extends ChangeNotifier {
   Future<void> dequeue(String itemId) =>
       _send(MsgType.dequeue, {'itemId': itemId});
 
+  /// Back into the rotation after the host hid us while we were away.
+  Future<void> rejoin() => _send(MsgType.rejoin, {});
+
   /// Skip the playing song; the host charges the remaining time to us.
   Future<void> skip(String trackId) =>
       _send(MsgType.skip, {'trackId': trackId});

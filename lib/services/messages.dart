@@ -32,6 +32,9 @@ abstract final class MsgType {
   /// {uuid, name, rid, url} — please resolve this Spotify short link.
   static const resolve = 'resolve';
 
+  /// {uuid, name} — a member paused by the host asks to be back in.
+  static const rejoin = 'rejoin';
+
   // host -> member
   /// {rid, url?} — the real URL behind a short link (null: couldn't).
   static const resolved = 'resolved';
