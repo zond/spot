@@ -48,6 +48,11 @@
             android:foregroundServiceType="mediaPlayback"
             android:exported="false"/>
 
+        <!-- Monochrome status-bar icon for the hosting notification. -->
+        <meta-data
+            android:name="com.zond.spot.service.NOTIFICATION_ICON"
+            android:resource="@drawable/ic_stat_spot" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

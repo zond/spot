@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 /// Keeps the host process alive with the screen off.
@@ -8,6 +9,12 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 abstract final class HostForeground {
   static bool _initialized = false;
   static const _title = 'Spot is hosting';
+
+  /// Our own status-bar glyph (white queue figures), declared in the manifest.
+  static const _icon = NotificationIcon(
+    metaDataName: 'com.zond.spot.service.NOTIFICATION_ICON',
+    backgroundColor: Color(0xFF1DB954),
+  );
 
   static void init() {
     if (_initialized) return;
@@ -51,6 +58,7 @@ abstract final class HostForeground {
       serviceTypes: [ForegroundServiceTypes.mediaPlayback],
       notificationTitle: _title,
       notificationText: text,
+      notificationIcon: _icon,
     );
   }
 
@@ -59,6 +67,7 @@ abstract final class HostForeground {
     await FlutterForegroundTask.updateService(
       notificationTitle: _title,
       notificationText: text,
+      notificationIcon: _icon,
     );
   }
 

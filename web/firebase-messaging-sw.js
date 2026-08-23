@@ -59,6 +59,7 @@ messaging.onBackgroundMessage((payload) => {
   return self.registration.showNotification('Spot', {
     body,
     icon: 'icons/Icon-192.png',
+    badge: 'icons/badge-96.png',
     tag: 'spot-state',
     renotify: false,
     silent: true,
