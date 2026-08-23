@@ -707,6 +707,22 @@ class HostController extends ChangeNotifier {
     _finishCurrent();
   }
 
+  /// Removes a member and their whole queue (e.g. someone who left with a
+  /// live queue). If their song is playing, it is skipped.
+  void kickMember(String memberUuid) {
+    final name = party.member(memberUuid)?.name ?? 'Member';
+    if (!party.removeMember(memberUuid)) return;
+    notice = '$name was removed by the host';
+    noticeAt = DateTime.now().millisecondsSinceEpoch;
+    unawaited(_persistParty());
+    notifyListeners();
+    if (currentMember?.uuid == memberUuid && !interlude) {
+      _finishCurrent();
+    } else {
+      broadcast();
+    }
+  }
+
   void removeQueued(String memberUuid, String itemId) {
     if (party.dequeue(memberUuid, itemId)) {
       party.removeIdle(playing: currentMember?.uuid);

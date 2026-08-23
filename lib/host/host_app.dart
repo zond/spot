@@ -645,9 +645,40 @@ class _MemberTile extends StatelessWidget {
       subtitle: Text(
         'airtime ${formatMs(controller.airtimeOf(member))} · '
         '${member.queue.length} entr${member.queue.length == 1 ? 'y' : 'ies'}'
-        '${member.shuffle ? ' · shuffle' : ''}${member.repeat ? ' · repeat' : ''}',
+        '${member.shuffle ? ' · shuffle' : ''}${member.repeat ? ' · repeat' : ''}'
+        '${_lastSeen(controller.party.listener(member.uuid)?.lastSeen)}',
       ),
       children: [
+        ListTile(
+          dense: true,
+          leading: const Icon(Icons.person_remove_outlined),
+          title: const Text('Remove member and their queue'),
+          subtitle: const Text('For someone who left with a live queue'),
+          onTap: () async {
+            final yes = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text('Remove ${member.name}?'),
+                content: Text(
+                  'Their ${member.queue.length} queued entr${member.queue.length == 1 ? 'y' : 'ies'} '
+                  'disappear${controller.currentMember?.uuid == member.uuid ? ' and their playing song is skipped' : ''}. '
+                  'They can rejoin and queue again any time.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Keep'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Remove'),
+                  ),
+                ],
+              ),
+            );
+            if (yes == true) controller.kickMember(member.uuid);
+          },
+        ),
         if (member.queue.isEmpty)
           const ListTile(
             dense: true,
@@ -698,4 +729,14 @@ class _MemberTile extends StatelessWidget {
       ],
     );
   }
+}
+
+String _lastSeen(int? lastSeenMs) {
+  if (lastSeenMs == null) return '';
+  final ago = DateTime.now().millisecondsSinceEpoch - lastSeenMs;
+  if (ago < 2 * 60000) return '';
+  final min = ago ~/ 60000;
+  return min < 60
+      ? ' · seen $min min ago'
+      : ' · seen ${min ~/ 60} h ${min % 60} min ago';
 }

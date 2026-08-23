@@ -431,6 +431,10 @@ class Party {
     }
   }
 
+  /// Host kicked a member: their queue goes with them (they stay a listener
+  /// and can queue again).
+  bool removeMember(String uuid) => _members.remove(uuid) != null;
+
   /// Drops members with nothing queued, except [playing] (whose current
   /// track is not in their queue). Their airtime is implied (= maximum) and
   /// restored on their next enqueue.
