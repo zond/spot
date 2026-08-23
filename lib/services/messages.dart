@@ -20,6 +20,10 @@ abstract final class MsgType {
   /// {uuid, name} — "still here"; keeps the member among push recipients.
   static const ping = 'ping';
 
+  /// {uuid, name, trackId} — skip the playing song; the remaining time is
+  /// charged to the skipper's airtime.
+  static const skip = 'skip';
+
   // host -> member
   /// MemberView
   static const state = 'state';

@@ -407,6 +407,33 @@ class _PartyScreenState extends State<PartyScreen> {
     if (name != null && name.trim().isNotEmpty) await c.rename(name);
   }
 
+  Future<void> _skip(NowInfo n) async {
+    final remaining =
+        n.track.durationMs -
+        n.positionAt(DateTime.now().millisecondsSinceEpoch);
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Skip "${n.track.name}"?'),
+        content: Text(
+          'The remaining ${formatMs(remaining)} is added to YOUR airtime — '
+          'you pay to veto, ${n.memberName} only pays for what was heard.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep playing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Skip (+${formatMs(remaining)})'),
+          ),
+        ],
+      ),
+    );
+    if (yes == true) await c.skip(n.track.id);
+  }
+
   Future<void> _add(Track t) async {
     try {
       await c.enqueue(t);
@@ -456,7 +483,20 @@ class _PartyScreenState extends State<PartyScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _NowPlayingCard(now: v?.now, waiting: v == null),
+          _NowPlayingCard(
+            now: v?.now,
+            waiting: v == null,
+            onSkip: v?.now == null ? null : () => _skip(v!.now!),
+          ),
+          if (v?.notice != null &&
+              DateTime.now().millisecondsSinceEpoch - v!.noticeAt < 90000)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: Text(
+                v.notice!,
+                style: const TextStyle(fontSize: 12, color: Colors.white60),
+              ),
+            ),
           if (v == null &&
               DateTime.now().difference(_joinedAt) >
                   const Duration(seconds: 10))
@@ -738,7 +778,8 @@ class _PartyScreenState extends State<PartyScreen> {
           Text(
             'Fair play: whenever a song ends, the next one comes from whoever '
             'has had the least airtime. Sitting out doesn\'t bank time: an '
-            'empty queue keeps pace with the leader.\n\n'
+            'empty queue keeps pace with the leader. Anyone may skip a song — '
+            'the remaining time goes on the skipper\'s airtime.\n\n'
             'Your own playlists: in the Spotify app, Share → Copy link on a '
             'playlist, album or song and paste it here. Installed to the Home '
             'Screen, Spot also shows up in Spotify\'s Share menu. Tap any '
@@ -779,9 +820,14 @@ class _PartyScreenState extends State<PartyScreen> {
 }
 
 class _NowPlayingCard extends StatelessWidget {
-  const _NowPlayingCard({required this.now, required this.waiting});
+  const _NowPlayingCard({
+    required this.now,
+    required this.waiting,
+    this.onSkip,
+  });
   final NowInfo? now;
   final bool waiting;
+  final VoidCallback? onSkip;
 
   @override
   Widget build(BuildContext context) {
@@ -851,10 +897,24 @@ class _NowPlayingCard extends StatelessWidget {
                               : null,
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          '${formatMs(pos)} / ${formatMs(n.track.durationMs)}'
-                          '${n.paused ? '  (paused)' : ''}',
-                          style: const TextStyle(fontSize: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${formatMs(pos)} / ${formatMs(n.track.durationMs)}'
+                                '${n.paused ? '  (paused)' : ''}',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                            if (onSkip != null)
+                              TextButton.icon(
+                                onPressed: onSkip,
+                                icon: const Icon(Icons.skip_next, size: 18),
+                                label: Text(
+                                  'Skip (+${formatMs(n.track.durationMs - pos)})',
+                                ),
+                              ),
+                          ],
                         ),
                       ],
                     );

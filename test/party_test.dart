@@ -98,6 +98,25 @@ void main() {
     expect(p.dequeue('a', 'x'), isFalse);
   });
 
+  test('skipping costs the skipper the remaining time, now or as debt', () {
+    final p = Party();
+    p.enqueue('a', 'A', q('a1', 1), 1);
+    p.enqueue('b', 'B', q('b1', 1), 1);
+    p.enqueue('b', 'B', q('b2', 1), 1);
+    p.takeNext(); // a1 plays
+    p.credit('a', 60000);
+    // b (member) skips with 120 s left: pays now
+    p.penalize('b', 'B', 120000, 2);
+    expect(p.member('b')!.playedMs, 120000);
+    // c (just watching) skips: carries debt until queuing
+    p.penalize('c', 'C', 30000, 3);
+    expect(p.member('c'), isNull);
+    expect(p.listener('c')!.debtMs, 30000);
+    p.enqueue('c', 'C', q('c1', 1), 4);
+    expect(p.member('c')!.playedMs, 120000 + 30000, reason: 'max + debt');
+    expect(p.listener('c')!.debtMs, 0);
+  });
+
   test('json round trip', () {
     final p = Party();
     p.touch('l', 'L', 7);

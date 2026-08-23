@@ -365,6 +365,9 @@ class MemberController extends ChangeNotifier {
   Future<void> dequeue(String itemId) =>
       _send(MsgType.dequeue, {'itemId': itemId});
 
+  /// Skip the playing song; the host charges the remaining time to us.
+  Future<void> skip(String trackId) => _send(MsgType.skip, {'trackId': trackId});
+
   void _handleData(Map<String, dynamic> data) {
     final m = Message.fromData(data);
     if (m == null || !_seen.add(m.id)) return;

@@ -62,18 +62,32 @@ class Member {
 /// Someone whose page talks to the host: gets state pushes while recently
 /// seen. Separate from [Member] so idle people don't clutter the party.
 class Listener {
-  Listener({required this.uuid, required this.name, required this.lastSeen});
+  Listener({
+    required this.uuid,
+    required this.name,
+    required this.lastSeen,
+    this.debtMs = 0,
+  });
   final String uuid;
   String name;
   int lastSeen;
 
-  Map<String, dynamic> toJson() =>
-      {'uuid': uuid, 'name': name, 'lastSeen': lastSeen};
+  /// Airtime owed (e.g. from skipping) while not an active member; applied
+  /// on top of the party maximum when they next queue a song.
+  int debtMs;
+
+  Map<String, dynamic> toJson() => {
+        'uuid': uuid,
+        'name': name,
+        'lastSeen': lastSeen,
+        if (debtMs > 0) 'debtMs': debtMs,
+      };
 
   factory Listener.fromJson(Map<String, dynamic> j) => Listener(
         uuid: j['uuid'] as String,
         name: j['name'] as String,
         lastSeen: (j['lastSeen'] as num?)?.toInt() ?? 0,
+        debtMs: (j['debtMs'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -141,8 +155,15 @@ class Party {
   /// false if the item id was already queued (duplicate delivery).
   bool enqueue(String uuid, String? name, QueueItem item, int nowMs) {
     final l = touch(uuid, name, nowMs);
-    final m = _members[uuid] ??=
-        Member(uuid: uuid, name: l.name, joinedAt: nowMs, playedMs: maxPlayedMs);
+    var m = _members[uuid];
+    if (m == null) {
+      m = _members[uuid] = Member(
+          uuid: uuid,
+          name: l.name,
+          joinedAt: nowMs,
+          playedMs: maxPlayedMs + l.debtMs);
+      l.debtMs = 0;
+    }
     if (m.queue.any((q) => q.id == item.id)) return false;
     m.queue.add(item);
     m.lastSeen = nowMs;
@@ -198,6 +219,20 @@ class Party {
     final before = _members.length;
     _members.removeWhere((uuid, m) => m.queue.isEmpty && uuid != playing);
     return before - _members.length;
+  }
+
+  /// Charges [ms] of airtime to [uuid] — the price of skipping a song. Active
+  /// members pay right away; anyone else carries it as debt until they next
+  /// queue a song.
+  void penalize(String uuid, String? name, int ms, int nowMs) {
+    if (ms <= 0) return;
+    final l = touch(uuid, name, nowMs);
+    final m = _members[uuid];
+    if (m != null) {
+      m.playedMs += ms;
+    } else {
+      l.debtMs += ms;
+    }
   }
 
   /// Credits airtime to the member whose track is playing.

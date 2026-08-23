@@ -13,6 +13,10 @@ A fair, shared Spotify queue for parties.
   only people with songs queued (or playing) are party members; anyone whose
   queue runs dry is dropped and re-admitted at the party's maximum airtime
   when they next add a song — back of the line, not "catching up".
+- **Veto with your own time**: any member can skip the playing song; the
+  remaining time is charged to the *skipper's* airtime (kept as a debt and
+  applied on their next queued song if they have nothing queued), while the
+  song's owner only paid for what was heard.
 - **Listeners**: everyone whose page has talked to the host recently gets
   state pushes (member pages ping every 4 min while visible); after 10 silent
   minutes the host stops pushing to them, and they get a fresh snapshot the

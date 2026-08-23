@@ -93,6 +93,8 @@ class MemberView {
     required this.myQueue,
     required this.others,
     required this.sentAt,
+    this.notice,
+    this.noticeAt = 0,
   });
 
   final String hostName;
@@ -106,6 +108,10 @@ class MemberView {
   final List<OtherInfo> others;
   final int sentAt;
 
+  /// Short announcement for everyone (e.g. "Bob skipped …"), with its time.
+  final String? notice;
+  final int noticeAt;
+
   bool get hasValidToken =>
       token != null && tokenExpiresAt > DateTime.now().millisecondsSinceEpoch;
 
@@ -118,6 +124,8 @@ class MemberView {
         'mq': myQueue.map((q) => q.toJson()).toList(),
         'o': others.map((o) => o.toJson()).toList(),
         's': sentAt,
+        if (notice != null) 'n': notice,
+        if (notice != null) 'na': noticeAt,
       };
 
   factory MemberView.fromJson(Map<String, dynamic> j) => MemberView(
@@ -135,5 +143,7 @@ class MemberView {
             .map((o) => OtherInfo.fromJson(o as Map<String, dynamic>))
             .toList(),
         sentAt: (j['s'] as num?)?.toInt() ?? 0,
+        notice: j['n'] as String?,
+        noticeAt: (j['na'] as num?)?.toInt() ?? 0,
       );
 }

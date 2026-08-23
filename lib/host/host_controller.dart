@@ -9,6 +9,7 @@ import 'package:spotify_sdk/spotify_sdk.dart' show PlayerState;
 import '../config.dart';
 import '../models/member_view.dart';
 import '../models/party.dart';
+import '../models/track.dart';
 import '../services/identity.dart';
 import '../services/messages.dart';
 import '../services/switch_client.dart';
@@ -48,6 +49,8 @@ class HostController extends ChangeNotifier {
 
   Party party = Party();
   HostPhase phase = HostPhase.idle;
+  String? notice;
+  int noticeAt = 0;
   String status = '';
   String? lastError;
   bool spotifyConnected = false;
@@ -489,6 +492,19 @@ class HostController extends ChangeNotifier {
         // A returning listener needs a snapshot right away.
         if (!wasKnown) unawaited(_sendView(uuid));
         notifyListeners();
+      case MsgType.skip:
+        final cur = current;
+        if (cur == null || m.body['trackId'] != cur.track.id) return;
+        final remaining = max(0, _durationMs - positionMs);
+        final who = party.listener(uuid)?.name ?? 'Someone';
+        party.penalize(uuid, name, remaining, now);
+        notice = '$who skipped ${cur.track.name} '
+            '(+${formatMs(remaining)} to ${who == name ? 'their' : who}\'s airtime)';
+        noticeAt = now;
+        status = notice!;
+        unawaited(_persistParty());
+        notifyListeners();
+        _finishCurrent();
       case MsgType.enqueue:
         final itemJson = m.body['item'];
         if (itemJson is! Map<String, dynamic>) return;
@@ -592,6 +608,8 @@ class HostController extends ChangeNotifier {
             ),
       ],
       sentAt: now,
+      notice: notice,
+      noticeAt: noticeAt,
     );
   }
 
