@@ -41,6 +41,7 @@ class HostController extends ChangeNotifier {
        push = push ?? HostPush();
 
   static const _partyKey = 'host_party';
+  static const _currentKey = 'host_current';
 
   final Identity identity;
   final SpotifyAuth auth;
@@ -175,7 +176,7 @@ class HostController extends ChangeNotifier {
       status = 'Waiting for songs';
       notifyListeners();
       unawaited(_poll());
-      _maybePlayNext();
+      if (!await _tryResume()) _maybePlayNext();
       broadcast();
     } catch (e) {
       lastError = '$e';
@@ -940,6 +941,56 @@ class HostController extends ChangeNotifier {
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_partyKey, jsonEncode(json));
+    if (cur != null && cm != null) {
+      await prefs.setString(
+          _currentKey, jsonEncode({'m': cm.uuid, 'item': cur.toJson()}));
+    } else {
+      await prefs.remove(_currentKey);
+    }
+  }
+
+  /// After a restart: if the Spotify app is still on the song we were
+  /// playing, pick it up where it is instead of starting over (or jumping to
+  /// someone else's song). Returns true if playback was adopted.
+  Future<bool> _tryResume() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_currentKey);
+      if (raw == null) return false;
+      final j = jsonDecode(raw) as Map<String, dynamic>;
+      final item = QueueItem.fromJson(j['item'] as Map<String, dynamic>);
+      final memberUuid = j['m'] as String;
+      final track = item.track;
+      final member = party.member(memberUuid);
+      if (track == null || member == null) return false;
+      final s = await player.state();
+      final playing = s?.track;
+      if (s == null || playing == null) return false;
+      final same = playing.uri == track.uri || playing.linkedFromUri == track.uri;
+      final pos = s.playbackPosition;
+      if (!same || (s.isPaused && pos == 0)) return false;
+      // The restart re-queued this song at the head (repeat off): consume it.
+      party.dequeue(memberUuid, item.id);
+      current = item;
+      currentMember = member;
+      party.removeIdle(playing: memberUuid);
+      _expectedUri = track.uri;
+      _sawPlaying = true;
+      _lastPos = pos; // airtime up to here was persisted before the restart
+      _positionMs = pos;
+      _positionAt = DateTime.now();
+      paused = s.isPaused;
+      _durationMs = playing.duration > 0 ? playing.duration : track.durationMs;
+      _startAttempts = 0;
+      status = 'Resumed ${track.name} for ${member.name} where Spotify was';
+      unawaited(HostForeground.update('${track.name} — ${member.name}'));
+      await _persistParty();
+      _onPlayerState(s); // arms the end-of-track timer
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Airtime accrues continuously; persist it now and then so a crash or
