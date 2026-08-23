@@ -744,30 +744,26 @@ class _PartyScreenState extends State<PartyScreen> {
                 onPressed: _rename,
                 icon: const Icon(Icons.edit, size: 18),
               ),
-              IconButton(
+              _ModeButton(
                 tooltip: v?.shuffle == true
                     ? 'Shuffle on: every song (also inside playlists) is '
                           'equally likely'
                     : 'Shuffle off: play in order',
-                visualDensity: VisualDensity.compact,
-                isSelected: v?.shuffle == true,
-                selectedIcon: const Icon(Icons.shuffle_on, size: 20),
+                icon: Icons.shuffle,
+                selected: v?.shuffle == true,
                 onPressed: v == null
                     ? null
                     : () => c.setModes(shuffle: !v.shuffle),
-                icon: const Icon(Icons.shuffle, size: 20),
               ),
-              IconButton(
+              _ModeButton(
                 tooltip: v?.repeat == true
                     ? 'Repeat on: entries stay and wrap around'
                     : 'Repeat off: entries are removed when played',
-                visualDensity: VisualDensity.compact,
-                isSelected: v?.repeat == true,
-                selectedIcon: const Icon(Icons.repeat_on, size: 20),
+                icon: Icons.repeat,
+                selected: v?.repeat == true,
                 onPressed: v == null
                     ? null
                     : () => c.setModes(repeat: !v.repeat),
-                icon: const Icon(Icons.repeat, size: 20),
               ),
             ],
           ),
@@ -1016,6 +1012,36 @@ class _NowPlayingCard extends StatelessWidget {
                 ),
         ),
       ),
+    );
+  }
+}
+
+/// Small toggle button whose "on" state is a tinted pill, not an inverted
+/// glyph (the Material `*_on` icons turn into solid blocks at small sizes).
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({
+    required this.tooltip,
+    required this.icon,
+    required this.selected,
+    required this.onPressed,
+  });
+  final String tooltip;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return IconButton(
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        backgroundColor: selected ? scheme.primary : Colors.transparent,
+        foregroundColor: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
+      ),
+      icon: Icon(icon, size: 20),
     );
   }
 }
