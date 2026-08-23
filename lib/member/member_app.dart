@@ -6,6 +6,7 @@ import '../models/member_view.dart';
 import '../models/track.dart';
 import '../services/open_spotify.dart';
 import '../services/spotify_web_api.dart';
+import 'install_hint.dart';
 import 'member_controller.dart';
 import 'qr_scanner_screen.dart';
 

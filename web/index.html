@@ -40,6 +40,23 @@
       var el = document.getElementById('loading');
       if (el) el.remove();
     });
+    // Capture the browser's install prompt (fires before Dart loads) so the
+    // page can offer "Install" itself; see lib/member/install_hint.dart.
+    window._deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      window._deferredInstallPrompt = e;
+    });
+    window.addEventListener('appinstalled', function () {
+      window._deferredInstallPrompt = null;
+    });
+    window._spotPromptInstall = function () {
+      var p = window._deferredInstallPrompt;
+      if (!p) return Promise.resolve(false);
+      window._deferredInstallPrompt = null;
+      return p.prompt().then(function () { return true; });
+    };
+    window._spotCanPromptInstall = function () { return !!window._deferredInstallPrompt; };
   </script>
 
   <!-- Firebase Cloud Messaging (fcm-switch project) via the compat SDK; the
