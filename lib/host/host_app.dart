@@ -649,39 +649,52 @@ class _MemberTile extends StatelessWidget {
         '${_lastSeen(controller.party.listener(member.uuid)?.lastSeen)}',
       ),
       children: [
-        ListTile(
-          dense: true,
-          leading: const Icon(Icons.visibility_off_outlined),
-          title: const Text('Hide while away'),
-          subtitle: const Text(
-            'Out of the rotation and invisible to everyone; queue kept. '
-            'They come back by tapping Rejoin on their own page.',
-          ),
-          onTap: () async {
-            final yes = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: Text('Hide ${member.name} while away?'),
-                content: Text(
-                  'Their ${member.queue.length} queued entr${member.queue.length == 1 ? 'y' : 'ies'} '
-                  'are kept but not played'
-                  '${controller.currentMember?.uuid == member.uuid ? ' (their song that is playing now finishes)' : ''}. '
-                  'Only they can rejoin, from their page.',
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Tooltip(
+              message:
+                  'Out of the rotation and invisible to everyone; their queue '
+                  'is kept and a playing song finishes. They come back by '
+                  'tapping Rejoin on their own page.',
+              triggerMode: TooltipTriggerMode.longPress,
+              showDuration: const Duration(seconds: 6),
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Keep'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Hide'),
-                  ),
-                ],
+                icon: const Icon(Icons.visibility_off_outlined, size: 18),
+                label: const Text('Hide while away'),
+                onPressed: () async {
+                  final yes = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: Text('Hide ${member.name} while away?'),
+                      content: Text(
+                        'Their ${member.queue.length} queued entr${member.queue.length == 1 ? 'y' : 'ies'} '
+                        'are kept but not played'
+                        '${controller.currentMember?.uuid == member.uuid ? ' (their song that is playing now finishes)' : ''}. '
+                        'Only they can rejoin, from their page.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Keep'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Hide'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (yes == true) controller.parkMember(member.uuid);
+                },
               ),
-            );
-            if (yes == true) controller.parkMember(member.uuid);
-          },
+            ),
+          ),
         ),
         if (member.queue.isEmpty)
           const ListTile(
