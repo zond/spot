@@ -232,6 +232,7 @@ class Party {
   /// Records that [uuid] is around (any message does this) and keeps the
   /// display name current.
   Listener touch(String uuid, String? name, int nowMs) {
+    unpark(uuid, nowMs); // any sign of life brings a parked member back
     final l = _listeners[uuid];
     final n = (name ?? l?.name ?? '').trim();
     if (l == null) {
@@ -431,9 +432,29 @@ class Party {
     }
   }
 
-  /// Host kicked a member: their queue goes with them (they stay a listener
-  /// and can queue again).
-  bool removeMember(String uuid) => _members.remove(uuid) != null;
+  /// Members the host set aside (left the room with a live queue): out of the
+  /// rotation, queue/modes/position kept; restored on their next message.
+  final Map<String, Member> _parked = {};
+  Iterable<Member> get parked => _parked.values;
+  Member? parkedMember(String uuid) => _parked[uuid];
+
+  bool park(String uuid) {
+    final m = _members.remove(uuid);
+    if (m == null) return false;
+    _parked[uuid] = m;
+    return true;
+  }
+
+  /// Back in the rotation with everything as it was (airtime at least the
+  /// party maximum, like any (re)joiner).
+  bool unpark(String uuid, int nowMs) {
+    final m = _parked.remove(uuid);
+    if (m == null) return false;
+    m.playedMs = max(m.playedMs, maxPlayedMs);
+    m.lastSeen = nowMs;
+    _members[uuid] = m;
+    return true;
+  }
 
   /// Drops members with nothing queued, except [playing] (whose current
   /// track is not in their queue). Their airtime is implied (= maximum) and
