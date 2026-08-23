@@ -6,12 +6,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "Building..."
+BUILD_TS="$(date -Iseconds)"
+echo "Building $BUILD_TS..."
 flutter pub get
-flutter build web --release --base-href /spot/
+flutter build web --release --base-href /spot/ --dart-define=BUILD_TS="$BUILD_TS"
 
 # Stamp the service worker so browsers pick up the new version
-BUILD_TS="$(date -Iseconds)"
 echo "// build: $BUILD_TS" >> build/web/firebase-messaging-sw.js
 echo "$BUILD_TS" > build/web/version.txt
 

@@ -37,6 +37,11 @@ abstract final class Config {
   /// Refresh the Spotify token this long before it expires.
   static const tokenRefreshMargin = Duration(minutes: 5);
 
+  /// Build stamp of the member web app (set by deploy-web.sh via
+  /// --dart-define=BUILD_TS=...), shown in the footer so stale caches are
+  /// easy to spot.
+  static const buildStamp = String.fromEnvironment('BUILD_TS', defaultValue: 'dev');
+
   /// Host re-sends state to members at least this often (clock re-sync).
   static const stateHeartbeat = Duration(seconds: 20);
 

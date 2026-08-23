@@ -28,9 +28,9 @@ class MemberController extends ChangeNotifier {
     Identity? identity,
     SwitchClient? switchClient,
     WebPush? push,
-  })  : identity = identity ?? Identity(),
-        switchClient = switchClient ?? SwitchClient(),
-        push = push ?? WebPush();
+  }) : identity = identity ?? Identity(),
+       switchClient = switchClient ?? SwitchClient(),
+       push = push ?? WebPush();
 
   static const _hostKey = 'member_host_uuid';
   static const _hostNameKey = 'member_host_name';
@@ -68,9 +68,11 @@ class MemberController extends ChangeNotifier {
     await identity.init();
     final prefs = await SharedPreferences.getInstance();
     final params = Uri.base.queryParameters;
-    final shared = [params['url'], params['text'], params['title']]
-        .whereType<String>()
-        .join(' ');
+    final shared = [
+      params['url'],
+      params['text'],
+      params['title'],
+    ].whereType<String>().join(' ');
     if (SpotifyLink.parse(shared) != null) _sharedText = shared;
     final joinParam = params['join'];
     if (joinParam != null && _uuidRe.hasMatch(joinParam)) {
@@ -139,7 +141,10 @@ class MemberController extends ChangeNotifier {
       if (token == null) throw StateError(_pushHelp());
       await identity.setName(name);
       await switchClient.register(
-          uuid: identity.uuid, token: token, secret: identity.secret);
+        uuid: identity.uuid,
+        token: token,
+        secret: identity.secret,
+      );
       push.onMessage(_handleData);
       _watchVisibility();
       await _sendJoin();
@@ -157,7 +162,8 @@ class MemberController extends ChangeNotifier {
 
   /// Why push is unavailable, and what to do about it, by permission state.
   String _pushHelp() {
-    const why = 'The host reaches you through push notifications, so they '
+    const why =
+        'The host reaches you through push notifications, so they '
         'must be allowed for this page.';
     switch (push.permission) {
       case 'denied':
@@ -232,18 +238,19 @@ class MemberController extends ChangeNotifier {
     unawaited(_send(MsgType.ping, {}));
     _pingTimer?.cancel();
     _pingTimer = Timer.periodic(
-        Config.memberPingInterval, (_) => unawaited(_send(MsgType.ping, {})));
+      Config.memberPingInterval,
+      (_) => unawaited(_send(MsgType.ping, {})),
+    );
   }
 
   /// Every message carries our uuid and name so the host can (re)admit us.
   Future<void> _send(String type, Map<String, dynamic> body) =>
       switchClient.send(
         hostUuid!,
-        Message(type: type, body: {
-          'uuid': identity.uuid,
-          'name': identity.name,
-          ...body,
-        }).toData(),
+        Message(
+          type: type,
+          body: {'uuid': identity.uuid, 'name': identity.name, ...body},
+        ).toData(),
       );
 
   static const _versionKey = 'member_app_version';
@@ -253,7 +260,8 @@ class MemberController extends ChangeNotifier {
   /// this page was loaded, reload so the service-worker picks up the new
   /// build (same trick as analfapet).
   Future<void> _checkVersion() async {
-    if (DateTime.now().difference(_lastVersionCheck) < const Duration(minutes: 1)) {
+    if (DateTime.now().difference(_lastVersionCheck) <
+        const Duration(minutes: 1)) {
       return;
     }
     _lastVersionCheck = DateTime.now();
@@ -261,8 +269,11 @@ class MemberController extends ChangeNotifier {
       final baseHref =
           web.document.querySelector('base')?.getAttribute('href') ?? '/';
       final resp = await http
-          .get(Uri.parse(
-              '${baseHref}version.txt?t=${DateTime.now().millisecondsSinceEpoch}'))
+          .get(
+            Uri.parse(
+              '${baseHref}version.txt?t=${DateTime.now().millisecondsSinceEpoch}',
+            ),
+          )
           .timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) return;
       final server = resp.body.trim();
@@ -270,10 +281,33 @@ class MemberController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final local = prefs.getString(_versionKey);
       await prefs.setString(_versionKey, server);
-      if (local != null && local != server) web.window.location.reload();
+      if (local != null && local != server) {
+        await _dropCaches();
+        web.window.location.reload();
+      }
     } catch (_) {
       // Offline or blocked: just keep running what we have.
     }
+  }
+
+  /// Empties Cache Storage (Flutter's app-shell cache and ours) and nudges the
+  /// service workers to update, so the reload really fetches the new build.
+  /// Registrations are kept: the push subscription lives on them.
+  Future<void> _dropCaches() async {
+    try {
+      final keys = (await web.window.caches.keys().toDart).toDart;
+      for (final k in keys) {
+        await web.window.caches.delete(k.toDart).toDart;
+      }
+    } catch (_) {}
+    try {
+      final regs =
+          (await web.window.navigator.serviceWorker.getRegistrations().toDart)
+              .toDart;
+      for (final r in regs) {
+        await r.update().toDart;
+      }
+    } catch (_) {}
   }
 
   /// Changes the display name; a join message carries the new name to the
@@ -294,7 +328,9 @@ class MemberController extends ChangeNotifier {
     } on SpotifyApiException catch (e) {
       if (e.isUnauthorized) {
         unawaited(_sendJoin());
-        throw StateError('Token expired; asked the host for a new one. Try again.');
+        throw StateError(
+          'Token expired; asked the host for a new one. Try again.',
+        );
       }
       rethrow;
     }
@@ -304,7 +340,9 @@ class MemberController extends ChangeNotifier {
     final v = view;
     if (v == null || !v.hasValidToken) {
       unawaited(_sendJoin());
-      throw StateError("Waiting for the host's Spotify token — try again in a moment");
+      throw StateError(
+        "Waiting for the host's Spotify token — try again in a moment",
+      );
     }
     return v.token!;
   }
@@ -316,12 +354,15 @@ class MemberController extends ChangeNotifier {
     } on SpotifyApiException catch (e) {
       if (e.isUnauthorized) {
         unawaited(_sendJoin());
-        throw StateError('Token expired; asked the host for a new one. Try again.');
+        throw StateError(
+          'Token expired; asked the host for a new one. Try again.',
+        );
       }
       if (e.status == 404 || e.status == 403) {
         throw StateError(
-            'Spotify would not hand out that ${link.type} — private playlists '
-            'and Spotify-made ones cannot be read. Make it public and try again.');
+          'Spotify would not hand out that ${link.type} — private playlists '
+          'and Spotify-made ones cannot be read. Make it public and try again.',
+        );
       }
       rethrow;
     }
@@ -339,8 +380,9 @@ class MemberController extends ChangeNotifier {
   /// Adds a whole playlist as one queue entry; the host reads it live.
   Future<void> enqueuePlaylist(String id, String name, int total) async {
     final item = QueueItem(
-        id: const Uuid().v4(),
-        playlist: PlaylistRef(id: id, name: name, total: total));
+      id: const Uuid().v4(),
+      playlist: PlaylistRef(id: id, name: name, total: total),
+    );
     await _send(MsgType.enqueue, {'item': item.toJson()});
   }
 
@@ -365,10 +407,7 @@ class MemberController extends ChangeNotifier {
       );
       notifyListeners();
     }
-    await _send(MsgType.modes, {
-      'shuffle': ?shuffle,
-      'repeat': ?repeat,
-    });
+    await _send(MsgType.modes, {'shuffle': ?shuffle, 'repeat': ?repeat});
   }
 
   /// Applies the new order locally right away (so the drag doesn't snap
@@ -378,8 +417,7 @@ class MemberController extends ChangeNotifier {
     if (v != null) {
       final byId = {for (final q in v.myQueue) q.id: q};
       final next = [
-        for (final id in itemIds)
-          ?byId.remove(id),
+        for (final id in itemIds) ?byId.remove(id),
         ...v.myQueue.where((q) => byId.containsKey(q.id)),
       ];
       view = MemberView(
@@ -407,7 +445,8 @@ class MemberController extends ChangeNotifier {
       _send(MsgType.dequeue, {'itemId': itemId});
 
   /// Skip the playing song; the host charges the remaining time to us.
-  Future<void> skip(String trackId) => _send(MsgType.skip, {'trackId': trackId});
+  Future<void> skip(String trackId) =>
+      _send(MsgType.skip, {'trackId': trackId});
 
   void _handleData(Map<String, dynamic> data) {
     final m = Message.fromData(data);
@@ -429,7 +468,9 @@ class MemberController extends ChangeNotifier {
     _polling = true;
     try {
       final msgs = await switchClient.inbox(
-          uuid: identity.uuid, secret: identity.secret);
+        uuid: identity.uuid,
+        secret: identity.secret,
+      );
       for (final d in msgs) {
         _handleData(d);
       }
@@ -439,5 +480,4 @@ class MemberController extends ChangeNotifier {
       _polling = false;
     }
   }
-
 }

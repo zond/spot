@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config.dart';
 import '../models/member_view.dart';
 import '../models/track.dart';
 import '../services/open_spotify.dart';
@@ -877,6 +878,13 @@ class _PartyScreenState extends State<PartyScreen> {
             style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
           ),
           const InstallHint(),
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+              'Spot build ${Config.buildStamp}',
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white24),
+            ),
+          ),
         ],
       ),
     );
