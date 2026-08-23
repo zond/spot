@@ -449,7 +449,10 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     Text(
-                                      'for ${c.currentMember?.name ?? '?'}',
+                                      c.interlude
+                                          ? 'Spotify was playing this — the party '
+                                                'takes over when it ends (or skip)'
+                                          : 'for ${c.currentMember?.name ?? '?'}',
                                       style: const TextStyle(
                                         color: Colors.white60,
                                       ),
@@ -641,24 +644,25 @@ class _MemberTile extends StatelessWidget {
         for (final item in member.queue)
           ListTile(
             dense: true,
-            selected: !member.shuffle &&
+            selected:
+                !member.shuffle &&
                 member.queue.indexOf(item) == member.cursor &&
                 member.repeat,
             leading: item.playlist != null
                 ? const Icon(Icons.queue_music)
                 : item.track!.imageUrl == null
-                    ? const Icon(Icons.music_note)
-                    : Image.network(
-                        item.track!.imageUrl!,
-                        width: 40,
-                        height: 40,
-                        errorBuilder: (_, _, _) => const Icon(Icons.music_note),
-                      ),
+                ? const Icon(Icons.music_note)
+                : Image.network(
+                    item.track!.imageUrl!,
+                    width: 40,
+                    height: 40,
+                    errorBuilder: (_, _, _) => const Icon(Icons.music_note),
+                  ),
             title: Text(item.title, overflow: TextOverflow.ellipsis),
             subtitle: Text(
               item.playlist != null
                   ? 'Playlist · ${member.shuffle ? item.playlist!.playedIds.length : item.playlist!.nextIndex}'
-                      ' / ${item.playlist!.total} played'
+                        ' / ${item.playlist!.total} played'
                   : '${item.track!.artists} · ${formatMs(item.track!.durationMs)}',
               overflow: TextOverflow.ellipsis,
             ),

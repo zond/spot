@@ -76,6 +76,11 @@ class HostController extends ChangeNotifier {
   // ---- current track
   QueueItem? current;
   Member? currentMember;
+
+  /// True while we let a song that isn't from the party (whatever Spotify
+  /// was playing when the host started) finish before taking over. Nobody is
+  /// credited for it and skipping it is free.
+  bool interlude = false;
   String? _expectedUri;
   bool _sawPlaying = false;
   int _lastPos = 0;
@@ -176,7 +181,7 @@ class HostController extends ChangeNotifier {
       status = 'Waiting for songs';
       notifyListeners();
       unawaited(_poll());
-      if (!await _tryResume()) _maybePlayNext();
+      if (!await _tryResume() && !await _letForeignFinish()) _maybePlayNext();
       broadcast();
     } catch (e) {
       lastError = '$e';
@@ -347,6 +352,7 @@ class HostController extends ChangeNotifier {
   }
 
   Future<void> _startTrack(Member member, QueueItem entry, Track track) async {
+    interlude = false;
     current = QueueItem(id: '${entry.id}:${track.id}', track: track);
     currentMember = member;
     party.removeIdle(playing: member.uuid);
@@ -375,8 +381,12 @@ class HostController extends ChangeNotifier {
     if (!m.shuffle) {
       var guard = 0;
       while (guard++ < 20) {
-        final page = await SpotifyWebApi.playlistPage(token, pl.id, pl.nextIndex,
-            limit: 10);
+        final page = await SpotifyWebApi.playlistPage(
+          token,
+          pl.id,
+          pl.nextIndex,
+          limit: 10,
+        );
         pl.total = page.total;
         if (pl.nextIndex >= pl.total || page.fetched == 0) return null;
         for (final (off, t) in page.items) {
@@ -395,7 +405,12 @@ class HostController extends ChangeNotifier {
     var off = _rng.nextInt(pl.total);
     var scanned = 0;
     while (scanned < pl.total) {
-      final page = await SpotifyWebApi.playlistPage(token, pl.id, off, limit: 20);
+      final page = await SpotifyWebApi.playlistPage(
+        token,
+        pl.id,
+        off,
+        limit: 20,
+      );
       if (page.fetched == 0) break;
       for (final (_, t) in page.items) {
         if (pl.playedIds.add(t.id)) {
@@ -430,7 +445,8 @@ class HostController extends ChangeNotifier {
       if (_startAttempts < 3) {
         unawaited(_issuePlay());
       } else {
-        lastError = 'Spotify did not start ${current?.track?.name}; skipping it';
+        lastError =
+            'Spotify did not start ${current?.track?.name}; skipping it';
         _finishCurrent();
       }
     });
@@ -469,9 +485,12 @@ class HostController extends ChangeNotifier {
 
     if (_sawPlaying) {
       if (pos >= _lastPos) {
-        party.credit(currentMember!.uuid, pos - _lastPos);
+        final cm = currentMember;
+        if (cm != null) {
+          party.credit(cm.uuid, pos - _lastPos);
+          _persistThrottled();
+        }
         _lastPos = pos;
-        _persistThrottled();
       } else {
         // Position jumped back: a seek, or Spotify restarted the track after
         // it ended (repeat). Treat the latter as the end.
@@ -656,6 +675,7 @@ class HostController extends ChangeNotifier {
     _expectedUri = null;
     current = null;
     currentMember = null;
+    interlude = false;
     unawaited(_playNext());
   }
 
@@ -756,10 +776,14 @@ class HostController extends ChangeNotifier {
         if (cur == null || m.body['trackId'] != cur.track!.id) return;
         final remaining = max(0, _durationMs - positionMs);
         final who = party.listener(uuid)?.name ?? 'Someone';
-        party.penalize(uuid, name, remaining, now);
-        notice =
-            '$who skipped ${cur.track!.name} '
-            '(+${formatMs(remaining)} to ${who == name ? 'their' : who}\'s airtime)';
+        if (interlude) {
+          notice = '$who skipped ${cur.track!.name} (not a party song — free)';
+        } else {
+          party.penalize(uuid, name, remaining, now);
+          notice =
+              '$who skipped ${cur.track!.name} '
+              '(+${formatMs(remaining)} to ${who == name ? 'their' : who}\'s airtime)';
+        }
         noticeAt = now;
         status = notice!;
         unawaited(_persistParty());
@@ -798,9 +822,13 @@ class HostController extends ChangeNotifier {
           broadcast();
         }
       case MsgType.modes:
-        party.setModes(uuid, name, now,
-            shuffle: m.body['shuffle'] as bool?,
-            repeat: m.body['repeat'] as bool?);
+        party.setModes(
+          uuid,
+          name,
+          now,
+          shuffle: m.body['shuffle'] as bool?,
+          repeat: m.body['repeat'] as bool?,
+        );
         party.removeIdle(playing: currentMember?.uuid);
         unawaited(_persistParty());
         notifyListeners();
@@ -857,12 +885,12 @@ class HostController extends ChangeNotifier {
       hostName: identity.name ?? 'Host',
       token: auth.accessToken,
       tokenExpiresAt: auth.expiresAt?.millisecondsSinceEpoch ?? 0,
-      now: cur == null || curMember == null
+      now: cur == null
           ? null
           : NowInfo(
               track: cur.track!,
-              memberUuid: curMember.uuid,
-              memberName: curMember.name,
+              memberUuid: curMember?.uuid ?? '',
+              memberName: curMember?.name ?? 'Spotify (not from the party)',
               positionMs: positionMs,
               atMs: now,
               paused: paused,
@@ -883,8 +911,8 @@ class HostController extends ChangeNotifier {
               nextTrack: m.queue.isEmpty
                   ? null
                   : m.shuffle
-                      ? null
-                      : m.queue[m.cursor < m.queue.length ? m.cursor : 0].title,
+                  ? null
+                  : m.queue[m.cursor < m.queue.length ? m.cursor : 0].title,
             ),
       ],
       sentAt: now,
@@ -893,10 +921,10 @@ class HostController extends ChangeNotifier {
       pausedReason: !takenOver
           ? null
           : takenOverLocally
-              ? 'Party paused: someone is playing other music in the Spotify '
-                  'app on the host phone. The host can take it back.'
-              : 'Party paused: Spotify is playing on "$takenOverBy" (one '
-                  'stream per account). The host can take it back.',
+          ? 'Party paused: someone is playing other music in the Spotify '
+                'app on the host phone. The host can take it back.'
+          : 'Party paused: Spotify is playing on "$takenOverBy" (one '
+                'stream per account). The host can take it back.',
     );
   }
 
@@ -943,9 +971,53 @@ class HostController extends ChangeNotifier {
     await prefs.setString(_partyKey, jsonEncode(json));
     if (cur != null && cm != null) {
       await prefs.setString(
-          _currentKey, jsonEncode({'m': cm.uuid, 'item': cur.toJson()}));
+        _currentKey,
+        jsonEncode({'m': cm.uuid, 'item': cur.toJson()}),
+      );
     } else {
       await prefs.remove(_currentKey);
+    }
+  }
+
+  /// On start: if Spotify is already playing something that isn't ours, don't
+  /// cut it off — track it as an interlude and take over when it ends (or is
+  /// skipped). Returns true when such a song was adopted.
+  Future<bool> _letForeignFinish() async {
+    try {
+      final s = await player.state();
+      final t = s?.track;
+      if (s == null || t == null || s.isPaused) return false;
+      final id = Track.idFromUri(t.uri);
+      if (id == null) return false; // podcasts, local files: not our business
+      final artists = t.artists
+          .map((a) => a.name)
+          .whereType<String>()
+          .where((n) => n.isNotEmpty)
+          .join(', ');
+      final track = Track(
+        id: id,
+        name: t.name,
+        artists: artists.isEmpty ? (t.artist.name ?? '') : artists,
+        durationMs: t.duration,
+      );
+      interlude = true;
+      current = QueueItem(id: 'interlude:$id', track: track);
+      currentMember = null;
+      _expectedUri = t.uri;
+      _sawPlaying = true;
+      _lastPos = s.playbackPosition;
+      _positionMs = s.playbackPosition;
+      _positionAt = DateTime.now();
+      paused = false;
+      _durationMs = t.duration;
+      _startAttempts = 0;
+      status = 'Letting Spotify finish "${t.name}" before the party takes over';
+      unawaited(HostForeground.update(status));
+      _onPlayerState(s);
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -966,7 +1038,8 @@ class HostController extends ChangeNotifier {
       final s = await player.state();
       final playing = s?.track;
       if (s == null || playing == null) return false;
-      final same = playing.uri == track.uri || playing.linkedFromUri == track.uri;
+      final same =
+          playing.uri == track.uri || playing.linkedFromUri == track.uri;
       final pos = s.playbackPosition;
       if (!same || (s.isPaused && pos == 0)) return false;
       // The restart re-queued this song at the head (repeat off): consume it.

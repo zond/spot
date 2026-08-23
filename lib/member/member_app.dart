@@ -418,8 +418,11 @@ class _PartyScreenState extends State<PartyScreen> {
       builder: (ctx) => AlertDialog(
         title: Text('Skip "${n.track.name}"?'),
         content: Text(
-          'The remaining ${formatMs(remaining)} is added to YOUR airtime — '
-          'you pay to veto, ${n.memberName} only pays for what was heard.',
+          n.memberUuid.isEmpty
+              ? 'This one isn\'t a party song (Spotify was already playing '
+                    'it), so skipping is free — the party takes over right away.'
+              : 'The remaining ${formatMs(remaining)} is added to YOUR airtime — '
+                    'you pay to veto, ${n.memberName} only pays for what was heard.',
         ),
         actions: [
           TextButton(
@@ -428,7 +431,9 @@ class _PartyScreenState extends State<PartyScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Skip (+${formatMs(remaining)})'),
+            child: Text(
+              n.memberUuid.isEmpty ? 'Skip' : 'Skip (+${formatMs(remaining)})',
+            ),
           ),
         ],
       ),
