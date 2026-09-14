@@ -12,8 +12,13 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 
 - Host: `flutter build apk --release` and copy `app-release.apk` to
   `~/Drive/Spot/Spot.apk` (the user's Google Drive mount; the `Spot` folder is
-  shared with their family, who install from there). The mount is slow: copy
-  to a `.part` name and `mv`, with a long timeout. `flutter run -d <phone>` for dev.
+  shared with their family, who install from there). Use a plain
+  `cp <apk> ~/Drive/Spot/Spot.apk` straight to the final name, in the
+  background with a long timeout since the mount is slow. Never copy to a
+  temp name and rename: Drive types the file from the name it is *created*
+  with, so `Spot.apk.part` + `mv` leaves it as `application/x-zip`, which
+  Android's package installer refuses ("uninstallable"), and a later mimeType
+  PATCH is ignored. `flutter run -d <phone>` for dev.
 - Member web: `./deploy-web.sh` builds and force-pushes `gh-pages` of
   `git@github.com:zond/spot.git`. Fix build errors rather than skipping.
 - Source: `git add` / `git commit` / `git push origin main`.
