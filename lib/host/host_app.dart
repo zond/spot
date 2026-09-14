@@ -595,6 +595,34 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                 onPressed: c.clearError,
               ),
             ),
+          if (c.events.isNotEmpty)
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              leading: const Icon(Icons.history, size: 20),
+              title: const Text('Recent activity'),
+              subtitle: Text(
+                c.events.first,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: Colors.white54),
+              ),
+              children: [
+                for (final e in c.events)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: SelectableText(
+                        e,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           const SizedBox(height: 16),
           Text('Members with songs queued', style: theme.textTheme.titleMedium),
           if (members.isEmpty)
