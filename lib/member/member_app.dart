@@ -695,10 +695,7 @@ class _PartyScreenState extends State<PartyScreen> {
                   Expanded(
                     child: Text(
                       '${_collection!.kind}: ${_collection!.name} · '
-                      '${_collection!.complete ? '' : 'loaded '}'
-                      '${_collection!.tracks.length}'
-                      '${_collection!.complete ? '' : ' of ${_collection!.total}'}'
-                      ' tracks',
+                      '${_collection!.viaApp ? (_collection!.totalKnown ? '${_collection!.total} songs (not listable)' : 'length unknown (not listable)') : '${_collection!.complete ? '' : 'loaded '}${_collection!.tracks.length}${_collection!.complete ? '' : ' of ${_collection!.total}'} tracks'}',
                       style: theme.textTheme.titleSmall,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -747,9 +744,13 @@ class _PartyScreenState extends State<PartyScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  'Spotify won\'t list the songs of a playlist the host doesn\'t '
-                  'own or collaborate on — but the host can still play it, '
-                  'by index, through the Spotify app.',
+                  'Spotify hides the songs — and even the length — of a '
+                  'playlist the host doesn\'t own or collaborate on. The host '
+                  'can still play it through the Spotify app: it plays through '
+                  'in order the first time (that is how it learns the length) '
+                  'and can shuffle it after that. To get the song list here '
+                  'instead, invite the host as a collaborator in Spotify '
+                  '(⋯ → Invite collaborators) and accept the invite.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: Colors.white60,
                   ),
@@ -759,12 +760,15 @@ class _PartyScreenState extends State<PartyScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 4),
                 child: FilledButton.tonalIcon(
-                  onPressed: _collection!.total == 0
-                      ? null
-                      : () => _addPlaylistEntry(_collection!),
+                  onPressed:
+                      _collection!.viaApp ||
+                          (_collection!.totalKnown && _collection!.total > 0)
+                      ? () => _addPlaylistEntry(_collection!)
+                      : null,
                   icon: const Icon(Icons.playlist_add, size: 18),
                   label: Text(
-                    'Add playlist as entry (${_collection!.total} songs'
+                    'Add playlist as entry ('
+                    '${_collection!.totalKnown ? '${_collection!.total} songs' : 'length unknown'}'
                     '${_collection!.viaApp ? ', via Spotify app' : ''})',
                   ),
                 ),
@@ -916,7 +920,7 @@ class _PartyScreenState extends State<PartyScreen> {
                         v.myQueue[i].playlist != null
                             ? 'Playlist · '
                                   '${v.shuffle ? v.myQueue[i].playlist!.playedIds.length : v.myQueue[i].playlist!.nextIndex}'
-                                  ' / ${v.myQueue[i].playlist!.total} played'
+                                  ' / ${v.myQueue[i].playlist!.totalKnown ? v.myQueue[i].playlist!.total : '?'} played'
                                   '${v.repeat ? '' : ' · removed when done'}'
                             : '${v.myQueue[i].track!.artists} · '
                                   '${formatMs(v.myQueue[i].track!.durationMs)}',

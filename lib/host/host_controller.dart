@@ -88,6 +88,7 @@ class HostController extends ChangeNotifier {
   /// Playing a playlist the host can't read: we told the Spotify app to play
   /// index n of the context and are waiting to learn which track that is.
   bool _awaitingContext = false;
+  QueueItem? _contextEntry;
   String? _lastFinishedUri;
   Timer? _preempt;
   String? _expectedUri;
@@ -399,11 +400,18 @@ class HostController extends ChangeNotifier {
       final token = await auth.validToken();
       if (token != null) {
         final meta = await SpotifyWebApi.playlistMeta(token, pl.id);
-        if (meta.total > 0) pl.total = meta.total;
+        if ((meta.total ?? 0) > 0) pl.total = meta.total!;
         pl.name = meta.name;
       }
     } catch (_) {}
-    if (pl.total <= 0) return null;
+    // Length unknown (Spotify withholds it for playlists the host neither
+    // owns nor collaborates on): play through in order — running past the
+    // last item is how we learn how long it is. Shuffle kicks in from the
+    // second pass, when the length is known.
+    if (!pl.totalKnown) {
+      if (!pl.viaApp) return null;
+      return (pl.nextIndex++, false);
+    }
     if (!m.shuffle) {
       if (pl.nextIndex >= pl.total) return null;
       final idx = pl.nextIndex++;
@@ -425,6 +433,7 @@ class HostController extends ChangeNotifier {
     final pl = entry.playlist!;
     interlude = false;
     _awaitingContext = true;
+    _contextEntry = entry;
     current = QueueItem(
       id: '${entry.id}:#$idx',
       track: Track(
@@ -460,16 +469,33 @@ class HostController extends ChangeNotifier {
     }
     notifyListeners();
     _startTimeout?.cancel();
-    _startTimeout = Timer(const Duration(seconds: 10), () {
+    // Nothing started: either Spotify is busy, or we asked for an item past
+    // the end of a playlist whose length we don't know — which is exactly how
+    // we find that length out.
+    _startTimeout = Timer(const Duration(seconds: 5), () {
       if (!_awaitingContext) return;
-      if (_startAttempts < 3) {
+      if (_startAttempts < 2) {
         unawaited(_issuePlayIndex(contextUri, idx));
       } else {
-        lastError = 'Spotify did not start item ${idx + 1}; skipping it';
-        _awaitingContext = false;
-        _finishCurrent();
+        _endOfContext(idx);
       }
     });
+  }
+
+  /// Item [idx] wouldn't play: treat it as the end of the playlist, remember
+  /// the length we just learnt, and move on.
+  void _endOfContext(int idx) {
+    final pl = _contextEntry?.playlist;
+    if (pl != null && !pl.totalKnown && idx > 0) {
+      pl.total = idx; // items 0..idx-1 exist, idx doesn't
+      pl.nextIndex = idx;
+      status = '${pl.name} has $idx songs';
+      unawaited(_persistParty());
+    } else {
+      lastError = 'Spotify did not start item ${idx + 1}; skipping it';
+    }
+    _awaitingContext = false;
+    _finishCurrent();
   }
 
   /// Builds a [Track] from what App Remote reports is playing.
@@ -833,6 +859,7 @@ class HostController extends ChangeNotifier {
     _preempt?.cancel();
     _lastFinishedUri = _expectedUri;
     _awaitingContext = false;
+    _contextEntry = null;
     _expectedUri = null;
     current = null;
     currentMember = null;

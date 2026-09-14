@@ -100,7 +100,9 @@ class TrackCollection {
     int? total,
     this.nextOffset,
     this.viaApp = false,
-  }) : total = total ?? tracks.length;
+    bool? totalKnown,
+  }) : total = total ?? tracks.length,
+       totalKnown = totalKnown ?? true;
   final String kind;
   final String name;
   final String? id;
@@ -108,9 +110,14 @@ class TrackCollection {
   int total;
   int? nextOffset;
 
-  /// Items can't be read (not the host's playlist); only name/total known.
-  /// The host can still play it through the Spotify app by index.
+  /// Items can't be read (not the host's playlist); only the name is known
+  /// for sure. The host can still play it through the Spotify app by index.
   final bool viaApp;
+
+  /// False when Spotify wouldn't even tell us how many songs there are
+  /// (it omits the items object for playlists the host doesn't own or
+  /// collaborate on). The host then discovers the length by playing.
+  bool totalKnown;
   bool get complete => nextOffset == null;
 }
 
@@ -213,52 +220,65 @@ abstract final class SpotifyWebApi {
 
   /// Name and item count of a playlist — Spotify still hands these out for
   /// other people's playlists (only the items are restricted).
-  static Future<({String name, int total})> playlistMeta(
+  /// A playlist's name, and its length when Spotify is willing to say: the
+  /// items object (with its total) is omitted for playlists the token's user
+  /// neither owns nor collaborates on, so [total] is null for those.
+  static Future<({String name, int? total})> playlistMeta(
     String token,
     String id,
   ) async {
     final meta = await _get(
       token,
       Uri.https('api.spotify.com', '/v1/playlists/$id', {
-        'fields': 'name,tracks.total,items.total',
+        'fields': 'name,items.total,tracks.total',
       }),
     );
     final total =
         ((meta['items'] as Map?)?['total'] ??
                 (meta['tracks'] as Map?)?['total'])
             as num?;
-    return (
-      name: meta['name'] as String? ?? 'Playlist',
-      total: total?.toInt() ?? 0,
-    );
+    return (name: meta['name'] as String? ?? 'Playlist', total: total?.toInt());
   }
 
   /// A playlist's name and its first page of tracks; call [loadMore] for the
-  /// rest (episodes and unavailable items are skipped). If Spotify refuses
-  /// the items (403: not the token owner's playlist), returns a [viaApp]
-  /// collection with just name and total.
+  /// rest (episodes and unavailable items are skipped).
+  ///
+  /// Playlists the token's user neither owns nor collaborates on hand out
+  /// metadata only — Spotify answers the items request with 403, or with an
+  /// empty page, depending on the endpoint's mood — so those come back as a
+  /// [viaApp] collection: no track list, often not even a length, but the
+  /// host can still play them by index through the Spotify app.
   static Future<TrackCollection> playlist(String token, String id) async {
     final meta = await playlistMeta(token, id);
+    TrackCollection viaApp() => TrackCollection(
+      kind: 'Playlist',
+      name: meta.name,
+      id: id,
+      tracks: [],
+      total: meta.total ?? 0,
+      totalKnown: meta.total != null,
+      viaApp: true,
+    );
+
     final col = TrackCollection(
       kind: 'Playlist',
       name: meta.name,
       id: id,
       tracks: [],
-      total: meta.total,
+      total: meta.total ?? 0,
+      totalKnown: meta.total != null,
       nextOffset: 0,
     );
     try {
       await loadMore(token, col);
     } on SpotifyApiException catch (e) {
       if (e.status != 403) rethrow;
-      return TrackCollection(
-        kind: 'Playlist',
-        name: meta.name,
-        id: id,
-        tracks: [],
-        total: meta.total,
-        viaApp: true,
-      );
+      return viaApp();
+    }
+    // Nothing came back, but this isn't an empty playlist we're allowed to
+    // read: Spotify is withholding the items.
+    if (col.tracks.isEmpty && (meta.total == null || meta.total! > 0)) {
+      return viaApp();
     }
     return col;
   }
@@ -341,7 +361,14 @@ abstract final class SpotifyWebApi {
       }
       col.tracks.add(Track.fromSpotify(t.cast<String, dynamic>()));
     }
-    col.total = (page['total'] as num?)?.toInt() ?? (offset + items.length);
+    final pageTotal = (page['total'] as num?)?.toInt();
+    if (pageTotal != null && (pageTotal > 0 || items.isNotEmpty)) {
+      col.total = pageTotal;
+      col.totalKnown = true;
+    } else if (items.isNotEmpty) {
+      col.total = offset + items.length;
+      col.totalKnown = true;
+    }
     col.nextOffset = items.isEmpty || page['next'] == null
         ? null
         : offset + items.length;

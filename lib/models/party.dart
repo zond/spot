@@ -26,7 +26,15 @@ class PlaylistRef {
   String get uri => 'spotify:playlist:$id';
 
   /// Number of items, as last seen (refreshed whenever the host reads it).
+  /// 0 with [viaApp] means "unknown": Spotify withholds the length of
+  /// playlists the host neither owns nor collaborates on, so the host learns
+  /// it by playing the playlist through once.
   int total;
+
+  bool get totalKnown => total > 0;
+
+  /// This entry can still offer songs (an unknown length is not "empty").
+  bool get playable => viaApp || total > 0;
 
   /// In-order mode: the next item offset to play.
   int nextIndex;
@@ -34,12 +42,17 @@ class PlaylistRef {
   /// Shuffle mode: track ids played in the current cycle.
   final Set<String> playedIds;
 
-  /// Songs left before this entry is "done" (used as shuffle weight).
-  int remaining(bool shuffle) => shuffle
-      ? (total - playedIds.length).clamp(0, total)
-      : (total - nextIndex).clamp(0, total);
+  /// Songs left before this entry is "done" (used as shuffle weight). While
+  /// the length is unknown the entry counts as one song at a time — the
+  /// weighting becomes exact once the host has learnt the real length.
+  int remaining(bool shuffle) {
+    if (!totalKnown) return viaApp ? 1 : 0;
+    return shuffle
+        ? (total - playedIds.length).clamp(0, total)
+        : (total - nextIndex).clamp(0, total);
+  }
 
-  bool done(bool shuffle) => total == 0 || remaining(shuffle) == 0;
+  bool done(bool shuffle) => remaining(shuffle) == 0;
 
   void reset() {
     nextIndex = 0;
@@ -144,7 +157,7 @@ class Member {
       queue.fold(0, (n, q) => n + q.remaining(forShuffle));
 
   bool get hasSomethingToPlay =>
-      queue.any((q) => q.track != null || (q.playlist?.total ?? 0) > 0);
+      queue.any((q) => q.track != null || q.playlist!.playable);
 
   Map<String, dynamic> toJson() => {
     'uuid': uuid,
@@ -385,7 +398,7 @@ class Party {
       // Skip playlist entries that are empty (nothing to read).
       for (var i = 0; i < m.queue.length; i++) {
         final q = m.queue[(m.cursor + i) % m.queue.length];
-        if (q.track != null || (q.playlist?.total ?? 0) > 0) {
+        if (q.track != null || q.playlist!.playable) {
           m.cursor = (m.cursor + i) % m.queue.length;
           return q;
         }

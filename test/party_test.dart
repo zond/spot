@@ -218,6 +218,33 @@ void main() {
     },
   );
 
+  test('a content-hidden playlist is playable before its length is known', () {
+    final p = Party();
+    final hidden = QueueItem(
+      id: 'U',
+      playlist: PlaylistRef(id: 'pl-U', name: 'Hidden', total: 0, viaApp: true),
+    );
+    p.enqueue('a', 'A', hidden, 1);
+    expect(p.member('a')!.hasSomethingToPlay, isTrue);
+    final picked = p.plan(p.member('a')!, Random(1));
+    expect(picked, same(hidden));
+    expect(hidden.playlist!.remaining(false), 1, reason: 'one song at a time');
+    expect(hidden.playlist!.done(false), isFalse);
+
+    // Once the host has played through it once and knows the length, the
+    // normal (exact) weighting applies.
+    hidden.playlist!.total = 10;
+    hidden.playlist!.nextIndex = 3;
+    expect(hidden.playlist!.remaining(false), 7);
+
+    // An empty playlist the host *can* read stays unplayable.
+    final empty = QueueItem(
+      id: 'E',
+      playlist: PlaylistRef(id: 'pl-E', name: 'Empty', total: 0),
+    );
+    expect(empty.playlist!.playable, isFalse);
+  });
+
   test('json round trip incl. playlist entries, modes and cursor', () {
     final p = Party();
     p.setModes('a', 'A', 1, shuffle: true, repeat: true);
