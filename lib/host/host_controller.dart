@@ -90,6 +90,32 @@ class HostController extends ChangeNotifier {
   /// index n of the context and are waiting to learn which track that is.
   bool _awaitingContext = false;
   QueueItem? _contextEntry;
+
+  /// What plays next, worked out while the current song is still playing so
+  /// the switch itself costs nothing (no metadata fetch, no page load, no
+  /// silence for Spotify to fill with music of its own). A queue change in
+  /// the last seconds of a song lands one song later, which is a fair price
+  /// for a gapless handover.
+  ({Member member, QueueItem entry, Track? track, int? index})? _prepared;
+  Timer? _prefetch;
+
+  final _metaCache = <String, ({DateTime at, String name, int? total})>{};
+
+  /// Last few things that happened to playback, newest first — the host
+  /// screen shows them so a party that misbehaves can be explained after the
+  /// fact ("cut X, played Y", "Spotify played Z on its own", …).
+  final List<String> events = [];
+
+  void _log(String what) {
+    final now = DateTime.now();
+    String two(int v) => v.toString().padLeft(2, '0');
+    events.insert(
+      0,
+      '${two(now.hour)}:${two(now.minute)}:${two(now.second)}  $what',
+    );
+    if (events.length > 40) events.removeLast();
+  }
+
   String? _lastFinishedUri;
   Timer? _preempt;
   String? _expectedUri;
@@ -226,6 +252,8 @@ class HostController extends ChangeNotifier {
     _endCheck?.cancel();
     _startTimeout?.cancel();
     _preempt?.cancel();
+    _prefetch?.cancel();
+    _prepared = null;
     _pollTimer = _heartbeat = _tokenTimer = _broadcastDebounce = null;
     _reconnect = _endCheck = _startTimeout = null;
     await _stateSub?.cancel();
@@ -317,6 +345,35 @@ class HostController extends ChangeNotifier {
   Future<void> _playNext() async {
     _endCheck?.cancel();
     _startTimeout?.cancel();
+    _prefetch?.cancel();
+    var next = _prepared;
+    _prepared = null;
+    // A member who left (or was hidden) since we prepared their song.
+    if (next != null && !party.members.contains(next.member)) next = null;
+    next ??= await _resolveNext();
+    if (next != null) {
+      if (next.index != null) {
+        await _startContext(next.member, next.entry, next.index!);
+      } else {
+        await _startTrack(next.member, next.entry, next.track!);
+      }
+      return;
+    }
+    _expectedUri = null;
+    current = null;
+    currentMember = null;
+    party.removeIdle();
+    status = 'Waiting for songs';
+    unawaited(HostForeground.update(status));
+    await _persistParty();
+    notifyListeners();
+    broadcast();
+  }
+
+  /// Works out whose song plays next and which song that is — including any
+  /// network lookups — without touching playback.
+  Future<({Member member, QueueItem entry, Track? track, int? index})?>
+  _resolveNext() async {
     for (final member in party.candidates()) {
       var guard = 0;
       while (guard++ < 8) {
@@ -335,8 +392,7 @@ class HostController extends ChangeNotifier {
             continue;
           }
           party.commit(member, entry, playlistDone: r.$2);
-          await _startContext(member, entry, r.$1);
-          return;
+          return (member: member, entry: entry, track: null, index: r.$1);
         } else {
           try {
             final r = await _fromPlaylist(member, entry.playlist!);
@@ -359,19 +415,21 @@ class HostController extends ChangeNotifier {
           continue;
         }
         party.commit(member, entry, playlistDone: done);
-        await _startTrack(member, entry, track);
-        return;
+        return (member: member, entry: entry, track: track, index: null);
       }
     }
-    _expectedUri = null;
-    current = null;
-    currentMember = null;
-    party.removeIdle();
-    status = 'Waiting for songs';
-    unawaited(HostForeground.update(status));
-    await _persistParty();
-    notifyListeners();
-    broadcast();
+    return null;
+  }
+
+  /// Resolves the next song ahead of time (see [_prepared]).
+  Future<void> _prepareNext() async {
+    if (_prepared != null || phase != HostPhase.running) return;
+    try {
+      _prepared = await _resolveNext();
+    } catch (e) {
+      lastError = 'Preparing the next song: $e';
+      notifyListeners();
+    }
   }
 
   Future<void> _startTrack(Member member, QueueItem entry, Track track) async {
@@ -387,6 +445,7 @@ class HostController extends ChangeNotifier {
     paused = false;
     _durationMs = track.durationMs;
     _startAttempts = 0;
+    _log('play "${track.name}" for ${member.name}');
     await _persistParty();
     notifyListeners();
     await _issuePlay();
@@ -400,7 +459,14 @@ class HostController extends ChangeNotifier {
   /// (the host's own and collaborative playlists), otherwise from the public
   /// embed page, which lists at most 100 songs — so a length of exactly 100
   /// is reported as unknown and left to the play-through discovery.
-  Future<({String name, int? total})> playlistMeta(String id) async {
+  Future<({String name, int? total})> playlistMeta(
+    String id, {
+    Duration maxAge = const Duration(minutes: 10),
+  }) async {
+    final hit = _metaCache[id];
+    if (hit != null && DateTime.now().difference(hit.at) < maxAge) {
+      return (name: hit.name, total: hit.total);
+    }
     String? name;
     try {
       final token = await auth.validToken();
@@ -411,18 +477,39 @@ class HostController extends ChangeNotifier {
       }
     } catch (_) {}
     final page = await SpotifyPublicPage.playlist(id);
-    if (page != null && !page.capped) {
-      return (name: name ?? page.name, total: page.count);
-    }
-    return (name: name ?? page?.name ?? 'Playlist', total: null);
+    final result = page != null && !page.capped
+        ? (name: name ?? page.name, total: page.count)
+        : (name: name ?? page?.name ?? 'Playlist', total: null);
+    _metaCache[id] = (
+      at: DateTime.now(),
+      name: result.name,
+      total: result.total,
+    );
+    return result;
   }
 
   Future<(int, bool)?> _nextIndex(Member m, PlaylistRef pl) async {
-    try {
-      final meta = await playlistMeta(pl.id);
-      if ((meta.total ?? 0) > 0) pl.total = meta.total!;
-      pl.name = meta.name;
-    } catch (_) {}
+    if (pl.totalKnown) {
+      // Length already known: keep it fresh in the background rather than
+      // making every song wait for Spotify (and its public page) again.
+      unawaited(
+        playlistMeta(pl.id)
+            .then((meta) {
+              pl.name = meta.name;
+              if ((meta.total ?? 0) > 0 && meta.total != pl.total) {
+                pl.total = meta.total!;
+                notifyListeners();
+              }
+            })
+            .catchError((Object _) {}),
+      );
+    } else {
+      try {
+        final meta = await playlistMeta(pl.id);
+        if ((meta.total ?? 0) > 0) pl.total = meta.total!;
+        pl.name = meta.name;
+      } catch (_) {}
+    }
     // Length unknown (Spotify withholds it for playlists the host neither
     // owns nor collaborates on): play through in order — running past the
     // last item is how we learn how long it is. Shuffle kicks in from the
@@ -472,6 +559,7 @@ class HostController extends ChangeNotifier {
     paused = false;
     _durationMs = 0;
     _startAttempts = 0;
+    _log('play item ${idx + 1} of "${pl.name}" for ${member.name}');
     await _persistParty();
     notifyListeners();
     await _issuePlayIndex(pl.uri, idx);
@@ -485,6 +573,7 @@ class HostController extends ChangeNotifier {
       status = 'Playing for ${currentMember?.name} (from a playlist)';
     } catch (e) {
       lastError = 'Play playlist item failed: $e';
+      _log('playlist item command failed: $e');
     }
     notifyListeners();
     _startTimeout?.cancel();
@@ -509,6 +598,7 @@ class HostController extends ChangeNotifier {
       pl.total = idx; // items 0..idx-1 exist, idx doesn't
       pl.nextIndex = idx;
       status = '${pl.name} has $idx songs';
+      _log('"${pl.name}" turned out to have $idx songs');
       unawaited(_persistParty());
     } else {
       lastError = 'Spotify did not start item ${idx + 1}; skipping it';
@@ -538,13 +628,23 @@ class HostController extends ChangeNotifier {
     );
   }
 
-  /// Cut the song just before its end and move on, so Spotify never gets to
-  /// continue a playlist context or autoplay something of its own.
+  /// Cuts the song a moment before its end and starts the next one, so
+  /// Spotify never gets to continue a playlist context or autoplay something
+  /// of its own.
+  ///
+  /// It deliberately does not pause first: the switch has to be a single play
+  /// command, or the gap between pausing and playing is exactly the opening
+  /// Spotify uses to pick its own music (and we'd lose control of the
+  /// session). If we don't know yet what comes next, the song is left to play
+  /// out rather than cut into silence.
   Future<void> _preemptEnd() async {
     if (_expectedUri == null || takenOver || paused) return;
-    try {
-      await player.pause();
-    } catch (_) {}
+    if (_prepared == null) await _prepareNext();
+    if (_prepared == null) {
+      _log('nothing queued to switch to — letting the song play out');
+      return;
+    }
+    _log('cut "${current?.track?.name}" just before its end');
     _finishCurrent();
   }
 
@@ -615,6 +715,7 @@ class HostController extends ChangeNotifier {
       );
     } catch (e) {
       lastError = 'Play failed: $e';
+      _log('play command failed: $e');
     }
     notifyListeners();
     _startTimeout?.cancel();
@@ -715,6 +816,7 @@ class HostController extends ChangeNotifier {
 
     _endCheck?.cancel();
     _preempt?.cancel();
+    _prefetch?.cancel();
     if (!s.isPaused && duration > 0) {
       _endCheck = Timer(
         Duration(milliseconds: max(0, duration - pos) + 2500),
@@ -724,6 +826,12 @@ class HostController extends ChangeNotifier {
       if (untilCut > 0) {
         _preempt = Timer(Duration(milliseconds: untilCut), _preemptEnd);
       }
+      final untilPrefetch =
+          duration - pos - Config.prefetchBeforeEnd.inMilliseconds;
+      _prefetch = Timer(
+        Duration(milliseconds: max(0, untilPrefetch)),
+        () => unawaited(_prepareNext()),
+      );
     }
     if (pausedChanged) broadcast();
     notifyListeners();
@@ -765,6 +873,7 @@ class HostController extends ChangeNotifier {
       final snap = token == null ? null : await SpotifyWebApi.player(token);
       final d = snap?.device;
       if (d != null && _ourDeviceId != null && d.id != _ourDeviceId) {
+        _log('Spotify moved to "${d.name}"');
         _enterTakenOver(d.name, local: false);
         return;
       }
@@ -774,6 +883,10 @@ class HostController extends ChangeNotifier {
       _checkingDevice = false;
     }
     if (takenOver || _expectedUri == null) return;
+    _log(
+      'Spotify started something of its own '
+      '${nearEnd ? 'at the end of our song (taking over as usual)' : 'mid-song'}',
+    );
     if (!nearEnd) {
       _enterTakenOver('the Spotify app on this phone', local: true);
       return;

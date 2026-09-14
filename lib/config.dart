@@ -48,6 +48,10 @@ abstract final class Config {
   /// position is extrapolated between state events, hence the margin.
   static const preemptEnd = Duration(milliseconds: 700);
 
+  /// How long before a song ends the host works out what plays next, so the
+  /// switch itself needs no network call.
+  static const prefetchBeforeEnd = Duration(seconds: 12);
+
   /// Build stamp of the member web app (set by deploy-web.sh via
   /// --dart-define=BUILD_TS=...), shown in the footer so stale caches are
   /// easy to spot.
