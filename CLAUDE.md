@@ -27,7 +27,9 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 - `lib/models/` — `Track`, `Party` (state + least-airtime policy; queue entries are
   songs or `PlaylistRef`s, per-member shuffle/repeat/cursor; `plan`/`commit` are
   pure, the host resolves playlist entries via the Web API), `MemberView`.
-- `lib/services/` — `Identity`, `SwitchClient`, `Message`/`SeenIds`, `SpotifyWebApi`.
+- `lib/services/` — `Identity`, `SwitchClient`, `Message`/`SeenIds`, `SpotifyWebApi`,
+  `SpotifyPublicPage` (embed-page scrape for the length of playlists the API
+  withholds; host-only, browsers get no CORS headers there).
 - `lib/host/` — `SpotifyAuth` (PKCE), `AppRemotePlayer`, `HostController`,
   `HostForeground`, `HostPush`, `host_app.dart` (screens).
 - `lib/member/` — `MemberController`, `WebPush`, `QrScannerScreen`, `member_app.dart`.
@@ -60,7 +62,10 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
   every `Config.memberPingInterval` while visible.
 - Spotify Development Mode (Feb 2026): search ≤ 10 results, 5 auth users,
   no /users/{id}/playlists or batch endpoints; playlist items readable only
-  for playlists the host owns or collaborates on (403 otherwise). Member playlist access is via
+  for playlists the host owns or collaborates on — others answer 403 *or* an
+  empty page, and `GET /playlists/{id}` omits the whole `items` object, so the
+  length is hidden too. Such playlists are played by index through the Spotify
+  app; members ask the host (`MsgType.playlistMeta`) for name/length. Member playlist access is via
   pasted/shared links (`SpotifyLink`, `/playlists/{id}/items`, `/albums/{id}`,
   `/tracks/{id}`) and the manifest's `share_target`.
 - Spotify client id is entered in the app (`HostSettings`, SharedPreferences);

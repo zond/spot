@@ -227,16 +227,20 @@ abstract final class SpotifyWebApi {
     String token,
     String id,
   ) async {
+    // No `fields` filter: the field names moved in Spotify's 2026 rename
+    // (tracks → items) and an unknown name in that filter can cost us the
+    // whole object. The response is small for the playlists that matter here
+    // (the ones whose items Spotify withholds).
     final meta = await _get(
       token,
-      Uri.https('api.spotify.com', '/v1/playlists/$id', {
-        'fields': 'name,items.total,tracks.total',
-      }),
+      Uri.https('api.spotify.com', '/v1/playlists/$id'),
     );
-    final total =
-        ((meta['items'] as Map?)?['total'] ??
-                (meta['tracks'] as Map?)?['total'])
-            as num?;
+    final items = meta['items'] ?? meta['tracks'];
+    final total = items is Map
+        ? items['total'] as num?
+        : items is List
+        ? items.length
+        : null;
     return (name: meta['name'] as String? ?? 'Playlist', total: total?.toInt());
   }
 

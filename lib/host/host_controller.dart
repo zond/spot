@@ -12,6 +12,7 @@ import '../models/party.dart';
 import '../models/track.dart';
 import '../services/identity.dart';
 import '../services/messages.dart';
+import '../services/spotify_public_page.dart';
 import '../services/spotify_web_api.dart';
 import '../services/switch_client.dart';
 import 'foreground.dart';
@@ -395,14 +396,32 @@ class HostController extends ChangeNotifier {
   /// Next index to play from a playlist the host can't read (in order, or a
   /// random not-yet-played index), and whether the entry is then done for
   /// this cycle. Refreshes the total from Spotify's metadata when possible.
-  Future<(int, bool)?> _nextIndex(Member m, PlaylistRef pl) async {
+  /// Name and length of a playlist: from the Web API when Spotify is willing
+  /// (the host's own and collaborative playlists), otherwise from the public
+  /// embed page, which lists at most 100 songs — so a length of exactly 100
+  /// is reported as unknown and left to the play-through discovery.
+  Future<({String name, int? total})> playlistMeta(String id) async {
+    String? name;
     try {
       final token = await auth.validToken();
       if (token != null) {
-        final meta = await SpotifyWebApi.playlistMeta(token, pl.id);
-        if ((meta.total ?? 0) > 0) pl.total = meta.total!;
-        pl.name = meta.name;
+        final meta = await SpotifyWebApi.playlistMeta(token, id);
+        name = meta.name;
+        if ((meta.total ?? 0) > 0) return (name: meta.name, total: meta.total);
       }
+    } catch (_) {}
+    final page = await SpotifyPublicPage.playlist(id);
+    if (page != null && !page.capped) {
+      return (name: name ?? page.name, total: page.count);
+    }
+    return (name: name ?? page?.name ?? 'Playlist', total: null);
+  }
+
+  Future<(int, bool)?> _nextIndex(Member m, PlaylistRef pl) async {
+    try {
+      final meta = await playlistMeta(pl.id);
+      if ((meta.total ?? 0) > 0) pl.total = meta.total!;
+      pl.name = meta.name;
     } catch (_) {}
     // Length unknown (Spotify withholds it for playlists the host neither
     // owns nor collaborates on): play through in order — running past the
@@ -1055,6 +1074,28 @@ class HostController extends ChangeNotifier {
         } else {
           unawaited(_sendView(uuid));
         }
+      case MsgType.playlistMeta:
+        final rid = m.body['rid'];
+        final plId = m.body['id'];
+        if (rid is! String || plId is! String) return;
+        unawaited(() async {
+          ({String name, int? total})? meta;
+          try {
+            meta = await playlistMeta(plId);
+          } catch (_) {}
+          try {
+            await switchClient.send(
+              uuid,
+              Message(
+                type: MsgType.playlistMetaResult,
+                body: {'rid': rid, 'name': ?meta?.name, 'total': ?meta?.total},
+              ).toData(),
+            );
+          } catch (e) {
+            lastError = 'Playlist meta reply: $e';
+            notifyListeners();
+          }
+        }());
       case MsgType.modes:
         party.setModes(
           uuid,

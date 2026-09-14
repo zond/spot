@@ -42,9 +42,14 @@ A fair, shared Spotify queue for parties.
   Spotify's 2026 rules, `GET /playlists/{id}/items` only works for playlists
   the token's user *owns or collaborates on* — so only the host's own and
   collaborative playlists can be *listed*. Any other playlist can still be
-  queued: Spotify hands out its name and length, and the host plays it **by
-  index through the Spotify app** (`skipToIndex`), learning each track from
-  the player state as it starts. Such entries show "via Spotify app"; their
+  queued: Spotify hands out its name (and, for playlists it likes, a length),
+  and the host plays it **by index through the Spotify app** (`skipToIndex`),
+  learning each track from the player state as it starts. When the API won't
+  say how long such a playlist is, the host reads the length off Spotify's
+  public embed page (`SpotifyPublicPage`, host-only — browsers can't fetch
+  it); that page lists at most 100 songs, so a longer playlist stays "length
+  unknown" and the host learns the real length by playing it through once in
+  order (shuffle then works exactly from the second pass). Such entries show "via Spotify app"; their
   songs aren't listed on the member page. Songs are cut ~0.7 s before their
   end (`Config.preemptEnd`) so Spotify never continues the context or
   autoplays something foreign.

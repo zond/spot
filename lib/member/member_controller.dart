@@ -83,6 +83,7 @@ class MemberController extends ChangeNotifier {
   }
 
   final _pendingResolves = <String, Completer<String?>>{};
+  final _pendingMeta = <String, Completer<Map<String, dynamic>?>>{};
   final _seen = SeenIds();
 
   String get displayHostName => view?.hostName ?? hostName ?? 'the host';
@@ -510,6 +511,29 @@ class MemberController extends ChangeNotifier {
   Future<void> skip(String trackId) =>
       _send(MsgType.skip, {'trackId': trackId});
 
+  /// Asks the host how long a playlist is (and what it is called). Spotify
+  /// hides that from us for playlists the host doesn't own, but the host can
+  /// read the public page a browser isn't allowed to fetch. Null total =
+  /// still unknown.
+  Future<({String name, int? total})?> askPlaylistMeta(String id) async {
+    final rid = const Uuid().v4();
+    final completer = Completer<Map<String, dynamic>?>();
+    _pendingMeta[rid] = completer;
+    try {
+      await _send(MsgType.playlistMeta, {'rid': rid, 'id': id});
+      final body = await completer.future.timeout(const Duration(seconds: 25));
+      if (body == null) return null;
+      return (
+        name: body['name'] as String? ?? 'Playlist',
+        total: (body['total'] as num?)?.toInt(),
+      );
+    } on TimeoutException {
+      return null;
+    } finally {
+      _pendingMeta.remove(rid);
+    }
+  }
+
   /// Asks the host to follow a Spotify short share link and returns the real
   /// URL (the host phone has no CORS limits). Null if it couldn't.
   Future<String?> resolveShortLink(String url) async {
@@ -531,6 +555,12 @@ class MemberController extends ChangeNotifier {
     if (m == null || !_seen.add(m.id)) return;
     if (m.version > Config.protocolVersion) {
       unawaited(_reloadForVersion(m.version));
+    }
+    if (m.type == MsgType.playlistMetaResult) {
+      final rid = m.body['rid'];
+      if (rid is String) _pendingMeta[rid]?.complete(m.body);
+      _endWait();
+      return;
     }
     if (m.type == MsgType.resolved) {
       final rid = m.body['rid'];

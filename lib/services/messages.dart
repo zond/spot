@@ -35,6 +35,13 @@ abstract final class MsgType {
   /// {uuid, name} — a member paused by the host asks to be back in.
   static const rejoin = 'rejoin';
 
+  /// {uuid, name, rid, id} — what is this playlist called and how long is it?
+  /// (The host can see things a browser can't.)
+  static const playlistMeta = 'plmeta';
+
+  /// {rid, name?, total?} — answer to [playlistMeta]; total absent = unknown.
+  static const playlistMetaResult = 'plmetaResult';
+
   // host -> member
   /// {rid, url?} — the real URL behind a short link (null: couldn't).
   static const resolved = 'resolved';

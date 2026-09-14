@@ -363,6 +363,23 @@ class _PartyScreenState extends State<PartyScreen> {
           _filter.clear();
         });
       }
+      // Spotify wouldn't tell us how long it is — the host can look it up on
+      // the public page that browsers aren't allowed to fetch.
+      if (col.viaApp && !col.totalKnown && col.id != null) {
+        final meta = await c.askPlaylistMeta(col.id!);
+        if (!mounted || seq != _searchSeq || meta == null) return;
+        setState(() {
+          _collection = TrackCollection(
+            kind: col.kind,
+            name: meta.name,
+            id: col.id,
+            tracks: const [],
+            total: meta.total ?? 0,
+            totalKnown: meta.total != null,
+            viaApp: true,
+          );
+        });
+      }
     } catch (e) {
       if (mounted && seq == _searchSeq) setState(() => _searchError = '$e');
     } finally {
@@ -744,13 +761,13 @@ class _PartyScreenState extends State<PartyScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  'Spotify hides the songs — and even the length — of a '
-                  'playlist the host doesn\'t own or collaborate on. The host '
-                  'can still play it through the Spotify app: it plays through '
-                  'in order the first time (that is how it learns the length) '
-                  'and can shuffle it after that. To get the song list here '
-                  'instead, invite the host as a collaborator in Spotify '
-                  '(⋯ → Invite collaborators) and accept the invite.',
+                  'Spotify hides the songs of a playlist the host doesn\'t own '
+                  'or collaborate on, so they can\'t be listed here — but the '
+                  'host plays it through the Spotify app, song by song, and '
+                  '${_collection!.totalKnown ? 'knows how long it is, so shuffle works from the first song.' : 'has to play it through once in order to learn how long it is; shuffle works after that.'}'
+                  ' To see and pick individual songs here, invite the host as '
+                  'a collaborator in Spotify (⋯ → Invite collaborators) and '
+                  'accept the invite.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: Colors.white60,
                   ),

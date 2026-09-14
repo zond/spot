@@ -40,7 +40,7 @@ abstract final class Config {
   /// Protocol/app version stamped on every message. Bump when host and member
   /// must be on the same build: a member that sees a newer host reloads
   /// itself; a host that sees a newer member asks to be updated.
-  static const protocolVersion = 2;
+  static const protocolVersion = 3;
 
   /// Songs are cut this long before their end and the next one started, so
   /// Spotify never gets to continue a playlist context / autoplay something
