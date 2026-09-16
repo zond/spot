@@ -48,6 +48,15 @@ abstract final class Config {
   /// position is extrapolated between state events, hence the margin.
   static const preemptEnd = Duration(milliseconds: 700);
 
+  /// A foreign track appearing this close to the end of our song is just
+  /// Spotify moving on by itself, not someone grabbing the session.
+  static const endOfSongWindow = Duration(seconds: 20);
+
+  /// The party takes the session back this many times within
+  /// [interruptionWindow] before it accepts that someone else wants it.
+  static const interruptionsBeforeGivingUp = 5;
+  static const interruptionWindow = Duration(minutes: 3);
+
   /// How long before a song ends the host works out what plays next, so the
   /// switch itself needs no network call.
   static const prefetchBeforeEnd = Duration(seconds: 12);

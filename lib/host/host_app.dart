@@ -521,12 +521,12 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                   children: [
                     Text(
                       c.takenOverLocally
-                          ? 'Someone started other music in the Spotify app on '
-                                'this phone — the party is paused until you take '
-                                'it back (or it reclaims itself).'
-                          : 'Spotify is playing on "${c.takenOverBy}" — the '
-                                'party is paused. (One stream per account: '
-                                'someone else is using this Spotify account.)',
+                          ? 'The party kept being interrupted by other music '
+                                'in the Spotify app on this phone, so it '
+                                'stopped fighting for the session.'
+                          : 'Spotify kept being pulled to "${c.takenOverBy}", '
+                                'so the party stopped fighting for the session. '
+                                '(One stream per account.)',
                       style: TextStyle(
                         color: theme.colorScheme.onErrorContainer,
                       ),
@@ -537,20 +537,7 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                         FilledButton.icon(
                           onPressed: c.reclaim,
                           icon: const Icon(Icons.phone_android, size: 18),
-                          label: const Text('Take back'),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: SwitchListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            title: const Text(
-                              'Auto-reclaim after 30 s',
-                              style: TextStyle(fontSize: 13),
-                            ),
-                            value: c.autoReclaim,
-                            onChanged: c.setAutoReclaim,
-                          ),
+                          label: const Text('Take the party back'),
                         ),
                       ],
                     ),

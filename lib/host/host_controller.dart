@@ -70,8 +70,12 @@ class HostController extends ChangeNotifier {
   /// True when the takeover happened in the Spotify app on this very phone
   /// (someone started other music here) rather than on another device.
   bool takenOverLocally = false;
-  bool autoReclaim = false;
   Timer? _reclaimTimer;
+
+  /// When the session was recently pulled out from under us. The party takes
+  /// it straight back, and only gives up (showing the banner) if that keeps
+  /// happening — otherwise two devices would fight forever.
+  final List<DateTime> _interruptions = [];
   bool _checkingDevice = false;
   String status = '';
   String? lastError;
@@ -859,39 +863,55 @@ class HostController extends ChangeNotifier {
     }
   }
 
-  /// A track that isn't ours is playing. Either our song ended and Spotify
-  /// autoplayed (same device → move on) or another device took the account
-  /// over (→ pause the party instead of feeding it our queue).
+  /// A track that isn't ours is playing.
+  ///
+  /// Telling "Spotify walked on to the next track by itself" apart from
+  /// "someone took the account over" is guesswork at the moment a song ends —
+  /// and guessing "taken over" stops the party, which is much worse than
+  /// guessing wrong the other way. So the party simply takes the session
+  /// back: near the end of a song that means playing the next song (the
+  /// normal handover), mid-song it means cutting the intruder off with the
+  /// party's next song. Only when that keeps happening does it accept that
+  /// someone else wants the account and show the banner.
   Future<void> _onForeignTrack() async {
-    if (_checkingDevice || takenOver || _expectedUri == null) return;
-    _checkingDevice = true;
-    // Spotify only autoplays something else *after* our song reached its end;
-    // a foreign track while we were mid-song means a person chose it.
-    final nearEnd = _durationMs > 0 && positionMs >= _durationMs - 5000;
+    if (takenOver || _expectedUri == null) return;
+    final nearEnd =
+        _durationMs == 0 ||
+        positionMs >= _durationMs - Config.endOfSongWindow.inMilliseconds;
+    if (nearEnd) {
+      _log('Spotify moved on at the end of our song — playing the next one');
+      _finishCurrent();
+      return;
+    }
+
+    final now = DateTime.now();
+    _interruptions
+      ..add(now)
+      ..removeWhere((t) => now.difference(t) > Config.interruptionWindow);
+    if (_interruptions.length < Config.interruptionsBeforeGivingUp) {
+      _log(
+        'something else started playing mid-song '
+        '(${_interruptions.length}) — taking the party back',
+      );
+      _finishCurrent();
+      return;
+    }
+
+    // It keeps happening: stop fighting and say who we are fighting.
+    _interruptions.clear();
+    var who = 'another device';
+    var local = true;
     try {
       final token = await auth.validToken();
       final snap = token == null ? null : await SpotifyWebApi.player(token);
       final d = snap?.device;
-      if (d != null && _ourDeviceId != null && d.id != _ourDeviceId) {
-        _log('Spotify moved to "${d.name}"');
-        _enterTakenOver(d.name, local: false);
-        return;
+      if (d != null && (_ourDeviceId == null || d.id != _ourDeviceId)) {
+        who = d.name;
+        local = false;
       }
-    } catch (_) {
-      // Can't tell which device; fall back to the position heuristic.
-    } finally {
-      _checkingDevice = false;
-    }
-    if (takenOver || _expectedUri == null) return;
-    _log(
-      'Spotify started something of its own '
-      '${nearEnd ? 'at the end of our song (taking over as usual)' : 'mid-song'}',
-    );
-    if (!nearEnd) {
-      _enterTakenOver('the Spotify app on this phone', local: true);
-      return;
-    }
-    _finishCurrent();
+    } catch (_) {}
+    _log('gave up after ${Config.interruptionsBeforeGivingUp} interruptions');
+    _enterTakenOver(who, local: local);
   }
 
   void _enterTakenOver(String deviceName, {required bool local}) {
@@ -905,21 +925,15 @@ class HostController extends ChangeNotifier {
     _startTimeout?.cancel();
     _preempt?.cancel();
     status = local
-        ? 'Someone started other music in Spotify here — party paused'
-        : 'Spotify is playing on $deviceName — party paused';
+        ? 'Someone keeps playing other music here — party paused'
+        : 'Spotify keeps being pulled to $deviceName — party paused';
     notice = local
-        ? 'Party paused: someone is playing other music in Spotify on the host phone'
-        : 'Party paused: Spotify was taken over by $deviceName';
+        ? 'Party paused: someone keeps playing other music in Spotify on the host phone'
+        : 'Party paused: Spotify keeps being pulled to $deviceName';
     noticeAt = DateTime.now().millisecondsSinceEpoch;
     unawaited(HostForeground.update(status));
     notifyListeners();
     broadcast();
-    if (autoReclaim) {
-      _reclaimTimer?.cancel();
-      _reclaimTimer = Timer(const Duration(seconds: 30), () {
-        if (takenOver) unawaited(reclaim());
-      });
-    }
   }
 
   void _exitTakenOver() {
@@ -938,8 +952,13 @@ class HostController extends ChangeNotifier {
   /// Pulls playback back to this phone and resumes the current song where it
   /// was. Falls back to App Remote's play when the Web API can't help.
   Future<void> reclaim() async {
+    _interruptions.clear();
+    _exitTakenOver();
     final cur = current;
-    if (cur == null) return;
+    if (cur == null) {
+      unawaited(_playNext());
+      return;
+    }
     _sawPlaying = false;
     try {
       final token = await auth.validToken();
@@ -952,19 +971,6 @@ class HostController extends ChangeNotifier {
       status = 'Taking playback back…';
     } catch (e) {
       lastError = 'Take back: $e';
-    }
-    notifyListeners();
-  }
-
-  void setAutoReclaim(bool on) {
-    autoReclaim = on;
-    if (!on) {
-      _reclaimTimer?.cancel();
-      _reclaimTimer = null;
-    } else if (takenOver && _reclaimTimer == null) {
-      _reclaimTimer = Timer(const Duration(seconds: 30), () {
-        if (takenOver) unawaited(reclaim());
-      });
     }
     notifyListeners();
   }
