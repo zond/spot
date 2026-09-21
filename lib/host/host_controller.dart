@@ -566,7 +566,7 @@ class HostController extends ChangeNotifier {
   Future<void> _issuePlayIndex(String contextUri, int idx) async {
     _startAttempts++;
     try {
-      await player.playIndex(contextUri, idx);
+      await _startPlayback(contextUri: contextUri, index: idx);
       status = 'Playing for ${currentMember?.name} (from a playlist)';
     } catch (e) {
       lastError = 'Play playlist item failed: $e';
@@ -698,12 +698,46 @@ class HostController extends ChangeNotifier {
     return null;
   }
 
+  /// Starts something playing, preferring Spotify Connect over App Remote.
+  ///
+  /// App Remote talks to the Spotify app on this phone and can pull playback
+  /// off a speaker the phone was casting to; a Connect play command with no
+  /// device carries on wherever Spotify is already playing. The app is still
+  /// the fallback for when there is no active device to talk to (nothing has
+  /// played yet) or the Web API refuses.
+  Future<bool> _startPlayback({
+    String? uri,
+    String? contextUri,
+    int? index,
+  }) async {
+    try {
+      final token = await auth.validToken();
+      if (token != null) {
+        await SpotifyWebApi.playHere(
+          token,
+          uri: uri,
+          contextUri: contextUri,
+          index: index,
+        );
+        return true;
+      }
+    } catch (e) {
+      _log('Spotify Connect refused ($e) — using the app on this phone');
+    }
+    if (uri != null) {
+      await player.play(uri);
+    } else {
+      await player.playIndex(contextUri!, index!);
+    }
+    return false;
+  }
+
   Future<void> _issuePlay() async {
     final uri = _expectedUri;
     if (uri == null) return;
     _startAttempts++;
     try {
-      await player.play(uri);
+      await _startPlayback(uri: uri);
       status = 'Playing for ${currentMember?.name}';
       unawaited(
         HostForeground.update(

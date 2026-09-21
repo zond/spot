@@ -183,6 +183,41 @@ abstract final class SpotifyWebApi {
     );
   }
 
+  /// Starts playback on whatever device Spotify is currently using — the
+  /// phone, or a speaker it is casting to. Sending no device_id is what keeps
+  /// the music where the listeners are instead of yanking it back to the
+  /// phone. Either [uri] (one track) or [contextUri] + [index] (an item of a
+  /// playlist). Needs user-modify-playback-state.
+  static Future<void> playHere(
+    String token, {
+    String? uri,
+    String? contextUri,
+    int? index,
+    int positionMs = 0,
+  }) async {
+    assert((uri == null) != (contextUri == null));
+    final resp = await http
+        .put(
+          Uri.https('api.spotify.com', '/v1/me/player/play'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            if (uri != null) 'uris': [uri],
+            'context_uri': ?contextUri,
+            if (index != null) 'offset': {'position': index},
+            'position_ms': positionMs,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+    if (resp.statusCode != 204 &&
+        resp.statusCode != 202 &&
+        resp.statusCode != 200) {
+      throw SpotifyApiException(resp.statusCode, resp.body);
+    }
+  }
+
   /// Starts [uri] on [deviceId] at [positionMs] (transfers playback there).
   /// Needs user-modify-playback-state.
   static Future<void> playOn(
