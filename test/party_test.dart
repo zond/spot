@@ -245,6 +245,35 @@ void main() {
     expect(empty.playlist!.playable, isFalse);
   });
 
+  test('a playlist that changed size keeps sane bookkeeping', () {
+    final grew = PlaylistRef(id: 'g', name: 'Grew', total: 10, viaApp: true);
+    grew.nextIndex = 8;
+    grew.playedIds.addAll({'#2', '#8'});
+    grew.resize(14);
+    expect(grew.total, 14);
+    expect(grew.nextIndex, 8, reason: 'still mid-playlist');
+    expect(grew.playedIds, {'#2', '#8'});
+
+    final shrank = PlaylistRef(
+      id: 's',
+      name: 'Shrank',
+      total: 20,
+      viaApp: true,
+    );
+    shrank.nextIndex = 18;
+    shrank.playedIds.addAll({'#1', '#17', '#19'});
+    shrank.resize(6);
+    expect(shrank.total, 6);
+    expect(shrank.nextIndex, 6, reason: 'clamped to the new end');
+    expect(shrank.playedIds, {'#1'}, reason: 'markers past the end dropped');
+
+    // Readable playlists mark played *track ids*, which resizing must leave be.
+    final byId = PlaylistRef(id: 'r', name: 'Readable', total: 30);
+    byId.playedIds.addAll({'abc123', 'def456'});
+    byId.resize(4);
+    expect(byId.playedIds, {'abc123', 'def456'});
+  });
+
   test('json round trip incl. playlist entries, modes and cursor', () {
     final p = Party();
     p.setModes('a', 'A', 1, shuffle: true, repeat: true);

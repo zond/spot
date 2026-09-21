@@ -59,6 +59,23 @@ class PlaylistRef {
     playedIds.clear();
   }
 
+  /// Applies a length just read from Spotify. Songs get added to and removed
+  /// from playlists while the party runs, so anything pointing past the new
+  /// end is dropped — otherwise a playlist that shrank would look finished
+  /// (in order) or half-played (shuffled) for the wrong reason. Positions
+  /// still shift under us when songs are inserted or reordered; that's the
+  /// price of playing a playlist we're not allowed to read.
+  void resize(int newTotal) {
+    if (newTotal <= 0 || newTotal == total) return;
+    total = newTotal;
+    playedIds.removeWhere((marker) {
+      if (!marker.startsWith('#')) return false; // a track id, not an index
+      final i = int.tryParse(marker.substring(1));
+      return i != null && i >= newTotal;
+    });
+    if (nextIndex > newTotal) nextIndex = newTotal;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'n': name,

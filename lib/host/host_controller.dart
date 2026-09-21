@@ -465,7 +465,7 @@ class HostController extends ChangeNotifier {
   /// is reported as unknown and left to the play-through discovery.
   Future<({String name, int? total})> playlistMeta(
     String id, {
-    Duration maxAge = const Duration(minutes: 10),
+    Duration maxAge = const Duration(seconds: 30),
   }) async {
     final hit = _metaCache[id];
     if (hit != null && DateTime.now().difference(hit.at) < maxAge) {
@@ -493,27 +493,20 @@ class HostController extends ChangeNotifier {
   }
 
   Future<(int, bool)?> _nextIndex(Member m, PlaylistRef pl) async {
-    if (pl.totalKnown) {
-      // Length already known: keep it fresh in the background rather than
-      // making every song wait for Spotify (and its public page) again.
-      unawaited(
-        playlistMeta(pl.id)
-            .then((meta) {
-              pl.name = meta.name;
-              if ((meta.total ?? 0) > 0 && meta.total != pl.total) {
-                pl.total = meta.total!;
-                notifyListeners();
-              }
-            })
-            .catchError((Object _) {}),
-      );
-    } else {
-      try {
-        final meta = await playlistMeta(pl.id);
-        if ((meta.total ?? 0) > 0) pl.total = meta.total!;
-        pl.name = meta.name;
-      } catch (_) {}
-    }
+    // Songs come and go while the party runs, so the length is re-read every
+    // time we pick from the playlist. This runs in the prefetch, a good ten
+    // seconds before the song is needed, so nobody waits for it.
+    try {
+      final before = pl.total;
+      final meta = await playlistMeta(pl.id);
+      pl.name = meta.name;
+      if ((meta.total ?? 0) > 0) {
+        pl.resize(meta.total!);
+        if (before > 0 && pl.total != before) {
+          _log('"${pl.name}" is now ${pl.total} songs (was $before)');
+        }
+      }
+    } catch (_) {}
     // Length unknown (Spotify withholds it for playlists the host neither
     // owns nor collaborates on): play through in order — running past the
     // last item is how we learn how long it is. Shuffle kicks in from the
