@@ -427,7 +427,11 @@ class HostController extends ChangeNotifier {
 
   /// Resolves the next song ahead of time (see [_prepared]).
   Future<void> _prepareNext() async {
-    if (_prepared != null || phase != HostPhase.running) return;
+    if (phase != HostPhase.running) return;
+    // A good moment to notice where the music is coming out: off the
+    // critical path, and current by the time the next song starts.
+    unawaited(_learnDevice());
+    if (_prepared != null) return;
     try {
       _prepared = await _resolveNext();
     } catch (e) {
@@ -710,9 +714,9 @@ class HostController extends ChangeNotifier {
     String? contextUri,
     int? index,
   }) async {
-    try {
-      final token = await auth.validToken();
-      if (token != null) {
+    final token = await auth.validToken();
+    if (token != null) {
+      try {
         await SpotifyWebApi.playHere(
           token,
           uri: uri,
@@ -720,10 +724,30 @@ class HostController extends ChangeNotifier {
           index: index,
         );
         return true;
+      } catch (e) {
+        _log('Spotify Connect refused ($e)');
       }
-    } catch (e) {
-      _log('Spotify Connect refused ($e) — using the app on this phone');
+      // Nothing was playing (an idle speaker drops off Spotify), so there was
+      // no "here" to play on. Aim at the device the party was last coming out
+      // of before falling back to this phone's own speaker.
+      final device = _ourDeviceId;
+      if (device != null) {
+        try {
+          await SpotifyWebApi.playHere(
+            token,
+            uri: uri,
+            contextUri: contextUri,
+            index: index,
+            deviceId: device,
+          );
+          _log('woke "$ourDeviceName" back up');
+          return true;
+        } catch (e) {
+          _log('"$ourDeviceName" would not take it ($e)');
+        }
+      }
     }
+    _log('playing through the Spotify app on this phone');
     if (uri != null) {
       await player.play(uri);
     } else {
@@ -868,8 +892,10 @@ class HostController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Remembers which Spotify Connect device is "this phone": whatever is
-  /// active while our track is playing.
+  /// Notes which Spotify Connect device the party is coming out of — the
+  /// phone, or a speaker it is casting to. Songs are started on that device
+  /// when a plain "play where Spotify is playing" command doesn't work, so
+  /// the party doesn't fall back onto the phone's own speaker.
   Future<void> _learnDevice() async {
     if (_checkingDevice) return;
     _checkingDevice = true;
@@ -878,13 +904,19 @@ class HostController extends ChangeNotifier {
       if (token == null) return;
       final snap = await SpotifyWebApi.player(token);
       final d = snap?.device;
-      if (d != null && snap!.trackId == current?.track?.id) {
+      if (d == null) return;
+      if (d.id != _ourDeviceId) {
+        if (_ourDeviceId != null) {
+          _log('playing on "${d.name}" now (was "$ourDeviceName")');
+        } else {
+          _log('playing on "${d.name}"');
+        }
         _ourDeviceId = d.id;
         ourDeviceName = d.name;
         notifyListeners();
       }
     } catch (_) {
-      // Without device info we fall back to the old behaviour.
+      // Without device info we just keep using the last one we saw.
     } finally {
       _checkingDevice = false;
     }

@@ -194,11 +194,14 @@ abstract final class SpotifyWebApi {
     String? contextUri,
     int? index,
     int positionMs = 0,
+    String? deviceId,
   }) async {
     assert((uri == null) != (contextUri == null));
     final resp = await http
         .put(
-          Uri.https('api.spotify.com', '/v1/me/player/play'),
+          Uri.https('api.spotify.com', '/v1/me/player/play', {
+            'device_id': ?deviceId,
+          }),
           headers: {
             'Authorization': 'Bearer $token',
             'Content-Type': 'application/json',
