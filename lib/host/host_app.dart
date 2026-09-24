@@ -311,6 +311,71 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
     }
   }
 
+  /// Lets the host say which speaker the party comes out of, instead of
+  /// leaving it to Spotify's idea of the "current" device.
+  Future<void> _pickDevice() async {
+    final messenger = ScaffoldMessenger.of(context);
+    List<({String id, String name, String type, bool isActive})> devices;
+    try {
+      devices = await c.availableDevices();
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not list devices: $e')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    final picked = await showDialog<({String? id, String? name})>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Play the party on'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, (id: null, name: null)),
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.auto_mode),
+              title: const Text('Follow Spotify'),
+              subtitle: const Text('Whatever device Spotify is playing on'),
+              trailing: HostSettings.deviceId == null
+                  ? const Icon(Icons.check)
+                  : null,
+            ),
+          ),
+          for (final d in devices)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, (id: d.id, name: d.name)),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(switch (d.type.toLowerCase()) {
+                  'smartphone' => Icons.phone_android,
+                  'computer' => Icons.computer,
+                  'tv' => Icons.tv,
+                  _ => Icons.speaker,
+                }),
+                title: Text(d.name),
+                subtitle: Text(
+                  '${d.type}${d.isActive ? ' · playing now' : ''}',
+                ),
+                trailing: HostSettings.deviceId == d.id
+                    ? const Icon(Icons.check)
+                    : null,
+              ),
+            ),
+          if (devices.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Spotify lists no devices right now. Start playing something '
+                'in Spotify (or wake the speaker) and try again.',
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked != null) await c.pinDevice(picked.id, picked.name);
+  }
+
   Future<void> _confirmStop() async {
     final yes = await showDialog<bool>(
       context: context,
@@ -556,8 +621,7 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '${c.spotifyConnected ? 'Spotify connected' : 'Spotify disconnected'}'
-                  '${c.ourDeviceName == null ? '' : ' (${c.ourDeviceName})'} · '
+                  '${c.spotifyConnected ? 'Spotify connected' : 'Spotify disconnected'} · '
                   '${members.length} member${members.length == 1 ? '' : 's'}',
                   style: const TextStyle(fontSize: 12, color: Colors.white60),
                 ),
@@ -582,10 +646,39 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                 onPressed: c.clearError,
               ),
             ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                foregroundColor: Colors.white70,
+              ),
+              onPressed: _pickDevice,
+              icon: const Icon(Icons.speaker, size: 16),
+              label: Text(
+                HostSettings.deviceId == null
+                    ? 'Playing on: ${c.ourDeviceName ?? 'whatever Spotify uses'}'
+                    : 'Playing on: ${HostSettings.deviceName} (pinned)',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
           if (c.events.isNotEmpty)
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
               leading: const Icon(Icons.history, size: 20),
+              trailing: IconButton(
+                tooltip: 'Copy the whole log',
+                icon: const Icon(Icons.copy, size: 18),
+                onPressed: () {
+                  Clipboard.setData(
+                    ClipboardData(text: c.events.reversed.join('\n')),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('${c.events.length} lines copied')),
+                  );
+                },
+              ),
               title: const Text('Recent activity'),
               subtitle: Text(
                 c.events.first,

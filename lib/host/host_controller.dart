@@ -17,6 +17,7 @@ import '../services/spotify_web_api.dart';
 import '../services/switch_client.dart';
 import 'foreground.dart';
 import 'host_player.dart';
+import 'host_settings.dart';
 import 'host_push.dart';
 import 'spotify_auth.dart';
 
@@ -716,6 +717,25 @@ class HostController extends ChangeNotifier {
   }) async {
     final token = await auth.validToken();
     if (token != null) {
+      // Pinned to a speaker: say so explicitly. "Wherever Spotify is playing"
+      // is no help when the speaker has gone idle — Spotify then falls back
+      // to whatever was used last, which is usually this phone, since App
+      // Remote keeps its Spotify app awake.
+      final pinned = HostSettings.deviceId;
+      if (pinned != null) {
+        try {
+          await SpotifyWebApi.playHere(
+            token,
+            uri: uri,
+            contextUri: contextUri,
+            index: index,
+            deviceId: pinned,
+          );
+          return true;
+        } catch (e) {
+          _log('"${HostSettings.deviceName}" would not take it ($e)');
+        }
+      }
       try {
         await SpotifyWebApi.playHere(
           token,
@@ -889,6 +909,40 @@ class HostController extends ChangeNotifier {
       );
     }
     if (pausedChanged) broadcast();
+    notifyListeners();
+  }
+
+  /// Everything Spotify could play on right now, for the host's picker.
+  Future<List<({String id, String name, String type, bool isActive})>>
+  availableDevices() async {
+    final token = await auth.validToken();
+    if (token == null) return const [];
+    return (await SpotifyWebApi.devices(token)).devices;
+  }
+
+  /// Pins the party to a speaker (null = follow whatever Spotify is playing
+  /// on) and moves the song that is playing there right away.
+  Future<void> pinDevice(String? id, String? name) async {
+    await HostSettings.setDevice(id, name);
+    _log(
+      id == null
+          ? 'following Spotify\'s own device'
+          : 'playing on "$name" from now on',
+    );
+    notifyListeners();
+    final cur = current?.track;
+    if (id == null || cur == null) return;
+    try {
+      final token = await auth.validToken();
+      if (token == null) return;
+      await SpotifyWebApi.playOn(token, id, cur.uri, positionMs);
+      _ourDeviceId = id;
+      ourDeviceName = name;
+      _sawPlaying = false;
+    } catch (e) {
+      lastError = 'Could not move playback to $name: $e';
+      _log('could not move playback to "$name" ($e)');
+    }
     notifyListeners();
   }
 

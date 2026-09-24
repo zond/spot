@@ -133,6 +133,12 @@ class PlaybackDevice {
   final String type;
 }
 
+/// Everything Spotify can currently play on (the phone, speakers, TVs…).
+class DeviceList {
+  const DeviceList(this.devices);
+  final List<({String id, String name, String type, bool isActive})> devices;
+}
+
 class PlayerSnapshot {
   const PlayerSnapshot({this.device, required this.isPlaying, this.trackId});
   final PlaybackDevice? device;
@@ -181,6 +187,26 @@ abstract final class SpotifyWebApi {
       isPlaying: j['is_playing'] == true,
       trackId: (j['item'] as Map?)?['id'] as String?,
     );
+  }
+
+  /// The devices Spotify can play on right now. Needs
+  /// user-read-playback-state.
+  static Future<DeviceList> devices(String token) async {
+    final json = await _get(
+      token,
+      Uri.https('api.spotify.com', '/v1/me/player/devices'),
+    );
+    final list = json['devices'] as List? ?? const [];
+    return DeviceList([
+      for (final d in list)
+        if ((d as Map)['id'] != null)
+          (
+            id: d['id'] as String,
+            name: d['name'] as String? ?? 'Unknown device',
+            type: d['type'] as String? ?? '',
+            isActive: d['is_active'] == true,
+          ),
+    ]);
   }
 
   /// Starts playback on whatever device Spotify is currently using — the
