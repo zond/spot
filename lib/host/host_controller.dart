@@ -1401,7 +1401,7 @@ class HostController extends ChangeNotifier {
               atMs: now,
               paused: paused,
             ),
-      myPlayedMs: me?.playedMs ?? party.maxPlayedMs,
+      myPlayedMs: me == null ? party.maxPlayedMs : airtimeOf(me),
       myQueue: me == null ? const [] : List.of(me.queue),
       shuffle: me?.shuffle ?? false,
       repeat: me?.repeat ?? false,
@@ -1413,7 +1413,7 @@ class HostController extends ChangeNotifier {
             OtherInfo(
               uuid: m.uuid,
               name: m.name,
-              playedMs: m.playedMs,
+              playedMs: airtimeOf(m),
               queueLength: m.remaining(m.shuffle),
               nextTrack: m.queue.isEmpty
                   ? null

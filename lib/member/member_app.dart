@@ -518,6 +518,16 @@ class _PartyScreenState extends State<PartyScreen> {
     if (yes == true) await c.skip(n.track.id);
   }
 
+  /// Least airtime first — the order they'll get their turn in.
+  List<OtherInfo> _byAirtime(MemberView v) => [...v.others]
+    ..sort(
+      (a, b) => _liveAirtime(
+        a.uuid,
+        a.playedMs,
+        v,
+      ).compareTo(_liveAirtime(b.uuid, b.playedMs, v)),
+    );
+
   Future<void> _addPlaylistEntry(TrackCollection col) async {
     final messenger = ScaffoldMessenger.of(context);
     await c.enqueuePlaylist(col.id!, col.name, col.total, viaApp: col.viaApp);
@@ -978,7 +988,10 @@ class _PartyScreenState extends State<PartyScreen> {
               ),
             ),
           const SizedBox(height: 16),
-          Text('Everyone else', style: theme.textTheme.titleMedium),
+          Text(
+            'Everyone else (least airtime first)',
+            style: theme.textTheme.titleMedium,
+          ),
           if (v == null || v.others.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
@@ -988,7 +1001,7 @@ class _PartyScreenState extends State<PartyScreen> {
               ),
             ),
           if (v != null)
-            for (final o in v.others)
+            for (final o in _byAirtime(v))
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -998,7 +1011,8 @@ class _PartyScreenState extends State<PartyScreen> {
                 ),
                 title: Text(o.name),
                 subtitle: Text(
-                  'airtime ${formatMs(o.playedMs)} · ${o.queueLength} queued'
+                  'airtime ${formatMs(_liveAirtime(o.uuid, o.playedMs, v))} · '
+                  '${o.queueLength} queued'
                   '${o.nextTrack == null ? '' : ' · next: ${o.nextTrack}'}',
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1040,13 +1054,19 @@ class _PartyScreenState extends State<PartyScreen> {
 
   /// Airtime including the not-yet-credited part of a track of mine that is
   /// playing right now.
-  int _myAirtime(MemberView v) {
+  /// Somebody's airtime as it stands this second: the figure the host sent,
+  /// plus however much of the song has played since — the clock only runs for
+  /// whoever's song is on, so everyone can see the standings move.
+  int _liveAirtime(String uuid, int playedMs, MemberView v) {
     final n = v.now;
-    if (n == null || n.memberUuid != c.identity.uuid) return v.myPlayedMs;
-    final live =
+    if (n == null || n.memberUuid != uuid || n.paused) return playedMs;
+    final since =
         n.positionAt(DateTime.now().millisecondsSinceEpoch) - n.positionMs;
-    return v.myPlayedMs + (live > 0 ? live : 0);
+    return playedMs + (since > 0 ? since : 0);
   }
+
+  int _myAirtime(MemberView v) =>
+      _liveAirtime(c.identity.uuid, v.myPlayedMs, v);
 
   Widget _art(Track t) => t.imageUrl == null
       ? const Icon(Icons.music_note)
