@@ -16,7 +16,9 @@ A fair, shared Spotify queue for parties.
 - **Veto with your own time**: any member can skip the playing song; the
   remaining time is charged to the *skipper's* airtime (kept as a debt and
   applied on their next queued song if they have nothing queued), while the
-  song's owner only paid for what was heard.
+  song's owner only paid for what was heard. Skipping *your own* pick is
+  cheap — a flat `Config.ownSkipCost` (10 s) — since changing your mind about
+  your own song costs nobody else anything.
 - **Taken over**: Spotify allows one stream per account, so if someone else
   starts playing on the same account — on another device, or in the Spotify
   app on the host phone itself — the host notices (a foreign track appears;

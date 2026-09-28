@@ -470,10 +470,25 @@ class _PartyScreenState extends State<PartyScreen> {
     if (name != null && name.trim().isNotEmpty) await c.rename(name);
   }
 
-  Future<void> _skip(NowInfo n) async {
+  /// What skipping the playing song costs me: nothing for a song that isn't
+  /// the party's, a token amount for one of my own, the rest of the song for
+  /// somebody else's.
+  int _skipCost(NowInfo n) {
+    if (n.memberUuid.isEmpty) return 0;
     final remaining =
         n.track.durationMs -
         n.positionAt(DateTime.now().millisecondsSinceEpoch);
+    if (n.memberUuid == c.identity.uuid) {
+      return remaining < Config.ownSkipCost.inMilliseconds
+          ? remaining
+          : Config.ownSkipCost.inMilliseconds;
+    }
+    return remaining;
+  }
+
+  Future<void> _skip(NowInfo n) async {
+    final mine = n.memberUuid == c.identity.uuid;
+    final cost = _skipCost(n);
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -482,7 +497,10 @@ class _PartyScreenState extends State<PartyScreen> {
           n.memberUuid.isEmpty
               ? 'This one isn\'t a party song (Spotify was already playing '
                     'it), so skipping is free — the party takes over right away.'
-              : 'The remaining ${formatMs(remaining)} is added to YOUR airtime — '
+              : mine
+              ? 'It\'s your own pick, so changing your mind only costs you '
+                    '${formatMs(cost)} of airtime.'
+              : 'The remaining ${formatMs(cost)} is added to YOUR airtime — '
                     'you pay to veto, ${n.memberName} only pays for what was heard.',
         ),
         actions: [
@@ -492,9 +510,7 @@ class _PartyScreenState extends State<PartyScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              n.memberUuid.isEmpty ? 'Skip' : 'Skip (+${formatMs(remaining)})',
-            ),
+            child: Text(cost == 0 ? 'Skip' : 'Skip (+${formatMs(cost)})'),
           ),
         ],
       ),
@@ -576,6 +592,7 @@ class _PartyScreenState extends State<PartyScreen> {
             now: v?.now,
             waiting: v == null,
             onSkip: v?.now == null ? null : () => _skip(v!.now!),
+            skipCost: v?.now == null ? 0 : _skipCost(v!.now!),
           ),
           if (v?.pausedByHost == true)
             Card(
@@ -1046,10 +1063,14 @@ class _NowPlayingCard extends StatelessWidget {
     required this.now,
     required this.waiting,
     this.onSkip,
+    this.skipCost = 0,
   });
   final NowInfo? now;
   final bool waiting;
   final VoidCallback? onSkip;
+
+  /// Airtime the viewer would pay for skipping (0 = free).
+  final int skipCost;
 
   @override
   Widget build(BuildContext context) {
@@ -1133,7 +1154,9 @@ class _NowPlayingCard extends StatelessWidget {
                                 onPressed: onSkip,
                                 icon: const Icon(Icons.skip_next, size: 18),
                                 label: Text(
-                                  'Skip (+${formatMs(n.track.durationMs - pos)})',
+                                  skipCost == 0
+                                      ? 'Skip'
+                                      : 'Skip (+${formatMs(skipCost)})',
                                 ),
                               ),
                           ],

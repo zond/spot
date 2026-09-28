@@ -1221,13 +1221,19 @@ class HostController extends ChangeNotifier {
         if (cur == null || m.body['trackId'] != cur.track!.id) return;
         final remaining = max(0, _durationMs - positionMs);
         final who = party.listener(uuid)?.name ?? 'Someone';
+        final ownSong = currentMember?.uuid == uuid;
+        // Own song: a cheap "not this one after all". Someone else's: you pay
+        // the rest of it.
+        final cost = ownSong
+            ? min(remaining, Config.ownSkipCost.inMilliseconds)
+            : remaining;
         if (interlude) {
           notice = '$who skipped ${cur.track!.name} (not a party song — free)';
         } else {
-          party.penalize(uuid, name, remaining, now);
+          party.penalize(uuid, name, cost, now);
           notice =
-              '$who skipped ${cur.track!.name} '
-              '(+${formatMs(remaining)} to ${who == name ? 'their' : who}\'s airtime)';
+              '$who skipped ${ownSong ? 'their own' : ''} ${cur.track!.name} '
+              '(+${formatMs(cost)} to ${ownSong ? 'their' : who}\'s airtime)';
         }
         noticeAt = now;
         status = notice!;

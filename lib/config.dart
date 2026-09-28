@@ -48,6 +48,11 @@ abstract final class Config {
   /// position is extrapolated between state events, hence the margin.
   static const preemptEnd = Duration(milliseconds: 700);
 
+  /// Skipping your own song costs this much airtime instead of the rest of
+  /// the song: changing your mind about your own pick is cheap, vetoing
+  /// someone else's is not.
+  static const ownSkipCost = Duration(seconds: 10);
+
   /// A foreign track appearing this close to the end of our song is just
   /// Spotify moving on by itself, not someone grabbing the session.
   static const endOfSongWindow = Duration(seconds: 20);
