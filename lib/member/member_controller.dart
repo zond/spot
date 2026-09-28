@@ -351,6 +351,19 @@ class MemberController extends ChangeNotifier {
         await web.window.caches.delete(k.toDart).toDart;
       }
     } catch (_) {}
+    // Cache Storage isn't the only place a stale build hides: the browser's
+    // own HTTP cache holds these for ten minutes (GitHub Pages' max-age), and
+    // the reload below would read them straight back. Fetching them with
+    // 'reload' replaces those entries with what the server has now.
+    final baseHref =
+        web.document.querySelector('base')?.getAttribute('href') ?? '/';
+    for (final file in ['', 'flutter_bootstrap.js', 'main.dart.js']) {
+      try {
+        await web.window
+            .fetch('$baseHref$file'.toJS, web.RequestInit(cache: 'reload'))
+            .toDart;
+      } catch (_) {}
+    }
     try {
       final regs =
           (await web.window.navigator.serviceWorker.getRegistrations().toDart)

@@ -17,8 +17,15 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   if (event.request.method !== 'GET') return;
+  // Revalidate rather than trust the ten-minute max-age GitHub Pages puts on
+  // everything: an installed app that reloads after an update must not be
+  // handed the build it loaded half an hour ago. Revalidation is a 304 when
+  // nothing changed, so this costs a round trip, not a download.
   event.respondWith(
-    fetch(event.request).then((response) => {
+    fetch(event.request.url, {
+      cache: 'no-cache',
+      credentials: 'same-origin',
+    }).then((response) => {
       if (response.ok) {
         const clone = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
