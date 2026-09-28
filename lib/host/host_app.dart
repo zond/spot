@@ -11,6 +11,7 @@ import '../models/party.dart';
 import '../models/track.dart';
 import '../services/identity.dart';
 import '../services/open_spotify.dart';
+import '../widgets/history_list.dart';
 import 'host_controller.dart';
 import 'host_player.dart';
 import 'host_settings.dart';
@@ -664,6 +665,7 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
               ),
             ),
           ),
+          HistoryList(history: c.history),
           if (c.events.isNotEmpty)
             ExpansionTile(
               tilePadding: EdgeInsets.zero,

@@ -27,6 +27,11 @@ A fair, shared Spotify queue for parties.
   pauses the party, shows who/where with a *Take back* button (and an optional
   auto-reclaim after 30 s), and tells members. Playback resumes where it
   stopped.
+- **History**: both apps list what has played, newest first, with how each
+  song ended — played through, skipped (by whom, and how far in), or cut
+  short because something grabbed the Spotify session. The host keeps
+  `Config.historyKept` of them across restarts and shares the last
+  `Config.historyShared` in each snapshot.
 - **Listeners**: everyone whose page has talked to the host recently gets
   state pushes (member pages ping every 4 min while visible); after 10 silent
   minutes the host stops pushing to them, and they get a fresh snapshot the

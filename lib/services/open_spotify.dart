@@ -8,8 +8,11 @@ import '../models/track.dart';
 /// Spotify app, which starts *playing* the track (on the host phone that
 /// hijacks the party). The embed page shows the same card with an explicit
 /// play button, is not claimed by the app, and opens in a browser view.
-Future<bool> openInSpotify(Track track) => launchUrl(
-  Uri.parse('https://open.spotify.com/embed/track/${track.id}'),
+Future<bool> openInSpotify(Track track) => openTrackId(track.id);
+
+/// Same, for a song we only kept the id of (the play history).
+Future<bool> openTrackId(String id) => launchUrl(
+  Uri.parse('https://open.spotify.com/embed/track/$id'),
   mode: LaunchMode.inAppBrowserView,
   webOnlyWindowName: '_blank',
 );

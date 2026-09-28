@@ -8,6 +8,7 @@ import 'package:spotify_sdk/spotify_sdk.dart' show PlayerState;
 
 import '../config.dart';
 import '../models/member_view.dart';
+import '../models/history.dart';
 import '../models/party.dart';
 import '../models/track.dart';
 import '../services/identity.dart';
@@ -44,6 +45,7 @@ class HostController extends ChangeNotifier {
 
   static const _partyKey = 'host_party';
   static const _currentKey = 'host_current';
+  static const _historyKey = 'host_history';
 
   final Identity identity;
   final SpotifyAuth auth;
@@ -110,6 +112,15 @@ class HostController extends ChangeNotifier {
   Timer? _prefetch;
 
   final _metaCache = <String, ({DateTime at, String name, int? total})>{};
+
+  /// What the party has played, newest first — shown by both apps, and kept
+  /// across restarts.
+  final List<PlayedSong> history = [];
+
+  /// Why the song that is ending is ending, set by whoever ends it just
+  /// before [_finishCurrent] (default: it simply played).
+  String _endReason = 'played';
+  String? _endBy;
 
   /// Last few things that happened to playback, newest first — the host
   /// screen shows them so a party that misbehaves can be explained after the
@@ -184,6 +195,7 @@ class HostController extends ChangeNotifier {
     notifyListeners();
     try {
       await _restoreParty();
+      await _restoreHistory();
 
       status = 'Checking Spotify login…';
       notifyListeners();
@@ -635,6 +647,57 @@ class HostController extends ChangeNotifier {
     );
   }
 
+  /// Files the song that just ended under what happened to it. Songs that
+  /// never actually started (a playlist index that wouldn't play) leave no
+  /// trace.
+  void _recordHistory() {
+    final track = current?.track;
+    final reason = _endReason;
+    final by = _endBy;
+    _endReason = 'played';
+    _endBy = null;
+    if (track == null || track.id.isEmpty || (!_sawPlaying && _lastPos == 0)) {
+      return;
+    }
+    history.insert(
+      0,
+      PlayedSong(
+        name: track.name,
+        artists: track.artists,
+        trackId: track.id,
+        playedMs: _lastPos,
+        at: DateTime.now().millisecondsSinceEpoch,
+        reason: reason,
+        memberName: interlude ? null : currentMember?.name,
+        by: by,
+      ),
+    );
+    if (history.length > Config.historyKept) history.removeLast();
+    unawaited(_persistHistory());
+  }
+
+  Future<void> _persistHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _historyKey,
+      jsonEncode(history.map((h) => h.toJson()).toList()),
+    );
+  }
+
+  Future<void> _restoreHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_historyKey);
+      if (raw == null) return;
+      history
+        ..clear()
+        ..addAll([
+          for (final h in jsonDecode(raw) as List)
+            PlayedSong.fromJson(h as Map<String, dynamic>),
+        ]);
+    } catch (_) {}
+  }
+
   /// Cuts the song a moment before its end and starts the next one, so
   /// Spotify never gets to continue a playlist context or autoplay something
   /// of its own.
@@ -997,6 +1060,7 @@ class HostController extends ChangeNotifier {
         'something else started playing mid-song '
         '(${_interruptions.length}) — taking the party back',
       );
+      _endReason = 'interrupted';
       _finishCurrent();
       return;
     }
@@ -1096,6 +1160,7 @@ class HostController extends ChangeNotifier {
   }
 
   void _finishCurrent() {
+    _recordHistory();
     _endCheck?.cancel();
     _startTimeout?.cancel();
     _preempt?.cancel();
@@ -1131,6 +1196,8 @@ class HostController extends ChangeNotifier {
 
   void skip() {
     if (_expectedUri == null) return;
+    _endReason = 'skipped';
+    _endBy = 'the host';
     _finishCurrent();
   }
 
@@ -1227,6 +1294,8 @@ class HostController extends ChangeNotifier {
         final cost = ownSong
             ? min(remaining, Config.ownSkipCost.inMilliseconds)
             : remaining;
+        _endReason = 'skipped';
+        _endBy = who;
         if (interlude) {
           notice = '$who skipped ${cur.track!.name} (not a party song — free)';
         } else {
@@ -1407,6 +1476,7 @@ class HostController extends ChangeNotifier {
       repeat: me?.repeat ?? false,
       cursor: me?.cursor ?? 0,
       pausedByHost: parked != null,
+      history: history.take(Config.historyShared).toList(),
       others: [
         for (final m in party.members)
           if (m.uuid != uuid)

@@ -38,6 +38,8 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 - `lib/host/` — `SpotifyAuth` (PKCE), `AppRemotePlayer`, `HostController`,
   `HostForeground`, `HostPush`, `host_app.dart` (screens).
 - `lib/member/` — `MemberController`, `WebPush`, `QrScannerScreen`, `member_app.dart`.
+- `lib/widgets/` — pieces both apps show, e.g. `HistoryList` (what played, and
+  how each song ended).
 - `web/index.html` — Firebase compat init + `_spotGetToken` / `_spotOnMessage`
   / `_spotDetectQR` JS helpers used from Dart.
 

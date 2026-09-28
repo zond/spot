@@ -48,6 +48,12 @@ abstract final class Config {
   /// position is extrapolated between state events, hence the margin.
   static const preemptEnd = Duration(milliseconds: 700);
 
+  /// How many past songs the host keeps, and how many of those ride along in
+  /// each member snapshot (they share a 4 KB push payload with everything
+  /// else, so the members' list is the shorter one).
+  static const historyKept = 60;
+  static const historyShared = 8;
+
   /// Skipping your own song costs this much airtime instead of the rest of
   /// the song: changing your mind about your own pick is cheap, vetoing
   /// someone else's is not.

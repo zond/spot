@@ -8,6 +8,7 @@ import '../models/member_view.dart';
 import '../models/track.dart';
 import '../services/open_spotify.dart';
 import '../services/spotify_web_api.dart';
+import '../widgets/history_list.dart';
 import 'install_hint.dart';
 import 'member_controller.dart';
 import 'qr_scanner_screen.dart';
@@ -1017,6 +1018,7 @@ class _PartyScreenState extends State<PartyScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+          if (v != null) HistoryList(history: v.history),
           const SizedBox(height: 24),
           Text(
             'Fair play: whenever a song ends, the next one comes from whoever '

@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'history.dart';
 import 'party.dart';
 import 'track.dart';
 
@@ -100,6 +101,7 @@ class MemberView {
     this.repeat = false,
     this.cursor = 0,
     this.pausedByHost = false,
+    this.history = const [],
   });
 
   final String hostName;
@@ -129,6 +131,9 @@ class MemberView {
   /// The host paused me (out of the rotation, queue kept) — rejoin explicitly.
   final bool pausedByHost;
 
+  /// What the party has played lately, newest first.
+  final List<PlayedSong> history;
+
   bool get hasValidToken =>
       token != null && tokenExpiresAt > DateTime.now().millisecondsSinceEpoch;
 
@@ -148,6 +153,7 @@ class MemberView {
     if (repeat) 'rp': true,
     if (cursor > 0) 'cu': cursor,
     if (pausedByHost) 'pb': true,
+    if (history.isNotEmpty) 'hi': history.map((h) => h.toJson()).toList(),
   };
 
   factory MemberView.fromJson(Map<String, dynamic> j) => MemberView(
@@ -172,5 +178,9 @@ class MemberView {
     repeat: j['rp'] == true,
     cursor: (j['cu'] as num?)?.toInt() ?? 0,
     pausedByHost: j['pb'] == true,
+    history: [
+      for (final h in (j['hi'] as List? ?? const []))
+        PlayedSong.fromJson(h as Map<String, dynamic>),
+    ],
   );
 }
