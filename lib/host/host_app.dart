@@ -657,7 +657,8 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
               icon: const Icon(Icons.speaker, size: 16),
               label: Text(
                 HostSettings.deviceId == null
-                    ? 'Playing on: ${c.ourDeviceName ?? 'whatever Spotify uses'}'
+                    ? 'Playing on: '
+                          '${c.playingOn ?? c.ourDeviceName ?? 'whatever Spotify uses'}'
                     : 'Playing on: ${HostSettings.deviceName} (pinned)',
                 style: const TextStyle(fontSize: 12),
               ),

@@ -65,6 +65,11 @@ class HostController extends ChangeNotifier {
   /// is heard playing.
   String? _ourDeviceId;
   String? ourDeviceName;
+
+  /// Which device the last play command was aimed at (null: we let Spotify
+  /// choose). Shown on the host screen so a party coming out of the wrong
+  /// speaker is obvious.
+  String? playingOn;
   bool takenOver = false;
   String? takenOverBy;
 
@@ -705,11 +710,13 @@ class HostController extends ChangeNotifier {
 
   /// Starts something playing, preferring Spotify Connect over App Remote.
   ///
-  /// App Remote talks to the Spotify app on this phone and can pull playback
-  /// off a speaker the phone was casting to; a Connect play command with no
-  /// device carries on wherever Spotify is already playing. The app is still
-  /// the fallback for when there is no active device to talk to (nothing has
-  /// played yet) or the Web API refuses.
+  /// The device is always named explicitly — the one the host pinned, else
+  /// the one the party was last heard coming out of. Leaving it out means
+  /// "wherever Spotify is playing", which is no use between songs (an idle
+  /// speaker has dropped off) and actively wrong for a playlist: starting a
+  /// context without a device makes Spotify open a fresh session on its
+  /// default device, which is this phone, since App Remote keeps its Spotify
+  /// app awake. App Remote is the last resort, and plays on the phone.
   Future<bool> _startPlayback({
     String? uri,
     String? contextUri,
@@ -717,23 +724,24 @@ class HostController extends ChangeNotifier {
   }) async {
     final token = await auth.validToken();
     if (token != null) {
-      // Pinned to a speaker: say so explicitly. "Wherever Spotify is playing"
-      // is no help when the speaker has gone idle — Spotify then falls back
-      // to whatever was used last, which is usually this phone, since App
-      // Remote keeps its Spotify app awake.
       final pinned = HostSettings.deviceId;
-      if (pinned != null) {
+      final target = pinned ?? _ourDeviceId;
+      final targetName = pinned != null
+          ? HostSettings.deviceName
+          : ourDeviceName;
+      if (target != null) {
         try {
           await SpotifyWebApi.playHere(
             token,
             uri: uri,
             contextUri: contextUri,
             index: index,
-            deviceId: pinned,
+            deviceId: target,
           );
+          playingOn = targetName;
           return true;
         } catch (e) {
-          _log('"${HostSettings.deviceName}" would not take it ($e)');
+          _log('"$targetName" would not take it ($e)');
         }
       }
       try {
@@ -743,31 +751,14 @@ class HostController extends ChangeNotifier {
           contextUri: contextUri,
           index: index,
         );
+        playingOn = null;
         return true;
       } catch (e) {
         _log('Spotify Connect refused ($e)');
       }
-      // Nothing was playing (an idle speaker drops off Spotify), so there was
-      // no "here" to play on. Aim at the device the party was last coming out
-      // of before falling back to this phone's own speaker.
-      final device = _ourDeviceId;
-      if (device != null) {
-        try {
-          await SpotifyWebApi.playHere(
-            token,
-            uri: uri,
-            contextUri: contextUri,
-            index: index,
-            deviceId: device,
-          );
-          _log('woke "$ourDeviceName" back up');
-          return true;
-        } catch (e) {
-          _log('"$ourDeviceName" would not take it ($e)');
-        }
-      }
     }
     _log('playing through the Spotify app on this phone');
+    playingOn = 'this phone';
     if (uri != null) {
       await player.play(uri);
     } else {
