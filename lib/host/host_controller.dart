@@ -72,6 +72,13 @@ class HostController extends ChangeNotifier {
   /// choose). Shown on the host screen so a party coming out of the wrong
   /// speaker is obvious.
   String? playingOn;
+
+  /// The device this song was meant to come out of, and whether we already
+  /// had to drag it back there once (once per song is plenty — twice means
+  /// something is fighting us, and the interruption logic handles that).
+  String? _intendedDeviceId;
+  bool _movedBackThisSong = false;
+  Timer? _deviceCheck;
   bool takenOver = false;
   String? takenOverBy;
 
@@ -275,6 +282,7 @@ class HostController extends ChangeNotifier {
     _startTimeout?.cancel();
     _preempt?.cancel();
     _prefetch?.cancel();
+    _deviceCheck?.cancel();
     _prepared = null;
     _pollTimer = _heartbeat = _tokenTimer = _broadcastDebounce = null;
     _reconnect = _endCheck = _startTimeout = null;
@@ -471,6 +479,7 @@ class HostController extends ChangeNotifier {
     paused = false;
     _durationMs = track.durationMs;
     _startAttempts = 0;
+    _movedBackThisSong = false;
     _log('play "${track.name}" for ${member.name}');
     await _persistParty();
     notifyListeners();
@@ -578,6 +587,7 @@ class HostController extends ChangeNotifier {
     paused = false;
     _durationMs = 0;
     _startAttempts = 0;
+    _movedBackThisSong = false;
     _log('play item ${idx + 1} of "${pl.name}" for ${member.name}');
     await _persistParty();
     notifyListeners();
@@ -802,6 +812,8 @@ class HostController extends ChangeNotifier {
             deviceId: target,
           );
           playingOn = targetName;
+          _intendedDeviceId = target;
+          _scheduleDeviceCheck();
           return true;
         } catch (e) {
           _log('"$targetName" would not take it ($e)');
@@ -815,10 +827,13 @@ class HostController extends ChangeNotifier {
           index: index,
         );
         playingOn = null;
+        _intendedDeviceId = null;
         return true;
       } catch (e) {
         _log('Spotify Connect refused ($e)');
       }
+    } else {
+      _log('no Spotify token to hand the song to Connect with');
     }
     _log('playing through the Spotify app on this phone');
     playingOn = 'this phone';
@@ -964,6 +979,46 @@ class HostController extends ChangeNotifier {
     }
     if (pausedChanged) broadcast();
     notifyListeners();
+  }
+
+  /// Spotify does not always honour the device a play command names — a
+  /// context play in particular likes to open a session on its own default
+  /// device. So a moment after starting a song, check where it actually came
+  /// out, and move it back if that isn't where the party is.
+  void _scheduleDeviceCheck() {
+    _deviceCheck?.cancel();
+    _deviceCheck = Timer(const Duration(seconds: 4), () async {
+      final intended = _intendedDeviceId;
+      final track = current?.track;
+      if (intended == null ||
+          track == null ||
+          _movedBackThisSong ||
+          _expectedUri == null ||
+          takenOver) {
+        return;
+      }
+      try {
+        final token = await auth.validToken();
+        if (token == null) return;
+        final snap = await SpotifyWebApi.player(token);
+        final actual = snap?.device;
+        if (actual == null || actual.id == intended) return;
+        _movedBackThisSong = true;
+        _log(
+          'song landed on "${actual.name}" instead of "$playingOn" — '
+          'moving it back',
+        );
+        await SpotifyWebApi.playHere(
+          token,
+          uri: track.uri,
+          positionMs: positionMs,
+          deviceId: intended,
+        );
+        _sawPlaying = false;
+      } catch (e) {
+        _log('could not move the song back ($e)');
+      }
+    });
   }
 
   /// Everything Spotify could play on right now, for the host's picker.
@@ -1161,6 +1216,7 @@ class HostController extends ChangeNotifier {
 
   void _finishCurrent() {
     _recordHistory();
+    _deviceCheck?.cancel();
     _endCheck?.cancel();
     _startTimeout?.cancel();
     _preempt?.cancel();
