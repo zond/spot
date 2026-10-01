@@ -45,6 +45,13 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 
 ## Conventions / decisions
 
+- Playback transport: Sonos and most third-party speakers are `is_restricted`
+  devices — Spotify rejects *every* Web API command aimed at them (403
+  "Restricted device"). Those are driven through App Remote, which follows
+  whatever the phone's Spotify app is casting to. The Web API is used for
+  unrestricted devices (and to learn which device is active), since App Remote
+  can otherwise pull playback back to the phone.
+
 - `Config.spotifyScopes` must include `app-remote-control`: the Spotify app's own
   App Remote consent activity is blocked by Android (BAL) while Spot is in front,
   so the permission has to be pre-granted through the PKCE login. `SpotifyAuth`

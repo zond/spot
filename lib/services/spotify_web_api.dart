@@ -127,16 +127,25 @@ class PlaybackDevice {
     required this.id,
     required this.name,
     required this.type,
+    this.restricted = false,
   });
   final String id;
   final String name;
   final String type;
+
+  /// Spotify refuses every Web API playback command for this device — Sonos
+  /// and most other third-party integrations are like this. They can only be
+  /// driven through the Spotify app itself (App Remote).
+  final bool restricted;
 }
 
 /// Everything Spotify can currently play on (the phone, speakers, TVs…).
 class DeviceList {
   const DeviceList(this.devices);
-  final List<({String id, String name, String type, bool isActive})> devices;
+  final List<
+    ({String id, String name, String type, bool isActive, bool restricted})
+  >
+  devices;
 }
 
 class PlayerSnapshot {
@@ -183,6 +192,7 @@ abstract final class SpotifyWebApi {
               id: d['id'] as String,
               name: d['name'] as String? ?? 'Unknown device',
               type: d['type'] as String? ?? '',
+              restricted: d['is_restricted'] == true,
             ),
       isPlaying: j['is_playing'] == true,
       trackId: (j['item'] as Map?)?['id'] as String?,
@@ -205,6 +215,7 @@ abstract final class SpotifyWebApi {
             name: d['name'] as String? ?? 'Unknown device',
             type: d['type'] as String? ?? '',
             isActive: d['is_active'] == true,
+            restricted: d['is_restricted'] == true,
           ),
     ]);
   }

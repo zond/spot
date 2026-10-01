@@ -316,7 +316,10 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
   /// leaving it to Spotify's idea of the "current" device.
   Future<void> _pickDevice() async {
     final messenger = ScaffoldMessenger.of(context);
-    List<({String id, String name, String type, bool isActive})> devices;
+    List<
+      ({String id, String name, String type, bool isActive, bool restricted})
+    >
+    devices;
     try {
       devices = await c.availableDevices();
     } catch (e) {
@@ -326,13 +329,14 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
       return;
     }
     if (!mounted) return;
-    final picked = await showDialog<({String? id, String? name})>(
+    final picked = await showDialog<({String? id, String? name, bool restricted})>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('Play the party on'),
         children: [
           SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, (id: null, name: null)),
+            onPressed: () =>
+                Navigator.pop(ctx, (id: null, name: null, restricted: false)),
             child: ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.auto_mode),
@@ -345,7 +349,11 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
           ),
           for (final d in devices)
             SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, (id: d.id, name: d.name)),
+              onPressed: () => Navigator.pop(ctx, (
+                id: d.id,
+                name: d.name,
+                restricted: d.restricted,
+              )),
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(switch (d.type.toLowerCase()) {
@@ -356,7 +364,8 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
                 }),
                 title: Text(d.name),
                 subtitle: Text(
-                  '${d.type}${d.isActive ? ' · playing now' : ''}',
+                  '${d.type}${d.isActive ? ' · playing now' : ''}'
+                  '${d.restricted ? ' · driven through the Spotify app' : ''}',
                 ),
                 trailing: HostSettings.deviceId == d.id
                     ? const Icon(Icons.check)
@@ -374,7 +383,9 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
         ],
       ),
     );
-    if (picked != null) await c.pinDevice(picked.id, picked.name);
+    if (picked != null) {
+      await c.pinDevice(picked.id, picked.name, restricted: picked.restricted);
+    }
   }
 
   Future<void> _confirmStop() async {

@@ -80,6 +80,10 @@ class HostController extends ChangeNotifier {
   bool _movedBackThisSong = false;
   Timer? _deviceCheck;
 
+  /// True when the device the music is on only takes commands from the
+  /// Spotify app (Sonos and friends), so the Web API is no use for it.
+  bool ourDeviceRestricted = false;
+
   /// True while the party is coming out of this phone only because the
   /// speaker it should be on couldn't be reached — leaving the house with the
   /// phone does this. The next song goes back to the speaker by itself once
@@ -801,65 +805,84 @@ class HostController extends ChangeNotifier {
     String? contextUri,
     int? index,
   }) async {
-    final token = await auth.validToken();
-    if (token != null) {
-      final pinned = HostSettings.deviceId;
-      final target = pinned ?? await _activeDevice(token);
-      final targetName = pinned != null
-          ? HostSettings.deviceName
-          : ourDeviceName;
-      if (target != null) {
-        try {
-          await SpotifyWebApi.playHere(
-            token,
-            uri: uri,
-            contextUri: contextUri,
-            index: index,
-            deviceId: target,
-          );
-          playingOn = targetName;
-          _intendedDeviceId = target;
-          if (onPhoneAsFallback) _log('back on "$targetName"');
-          onPhoneAsFallback = false;
-          _scheduleDeviceCheck();
-          return true;
-        } catch (e) {
-          _log('"$targetName" would not take it ($e)');
-        }
+    Future<bool> throughTheApp(String why) async {
+      _log(why);
+      playingOn = ourDeviceRestricted ? ourDeviceName : 'this phone';
+      _intendedDeviceId = null;
+      onPhoneAsFallback =
+          !ourDeviceRestricted &&
+          (HostSettings.deviceId != null || _ourDeviceId != null);
+      if (uri != null) {
+        await player.play(uri);
+      } else {
+        await player.playIndex(contextUri!, index!);
       }
+      return false;
+    }
+
+    final token = await auth.validToken();
+    if (token == null) {
+      return throughTheApp('no Spotify token — using the Spotify app');
+    }
+
+    // Sonos and most other third-party speakers are "restricted": Spotify
+    // rejects every Web API command aimed at them (403). They can only be
+    // driven through the Spotify app, which is already casting to them — so
+    // that is what we use, and it keeps the music where it is.
+    final active = await _activeDevice(token);
+    if (active != null && active.restricted) {
+      return throughTheApp(
+        '"${active.name}" only takes commands from the Spotify app — '
+        'playing through it',
+      );
+    }
+
+    final pinned = HostSettings.deviceId;
+    final target = pinned ?? active?.id;
+    final targetName = pinned != null ? HostSettings.deviceName : active?.name;
+    if (target != null) {
       try {
         await SpotifyWebApi.playHere(
           token,
           uri: uri,
           contextUri: contextUri,
           index: index,
+          deviceId: target,
         );
-        playingOn = null;
-        _intendedDeviceId = null;
+        playingOn = targetName;
+        _intendedDeviceId = target;
+        if (onPhoneAsFallback) _log('back on "$targetName"');
         onPhoneAsFallback = false;
+        _scheduleDeviceCheck();
         return true;
       } catch (e) {
         _log(
-          e is SpotifyApiException && e.status == 404
-              ? 'Spotify has nothing to play on'
-                    '${targetName == null ? '' : ' — "$targetName" is out of reach'}'
-              : 'Spotify Connect refused ($e)',
+          e is SpotifyApiException && e.status == 403
+              ? '"$targetName" only takes commands from the Spotify app'
+              : '"$targetName" would not take it ($e)',
         );
       }
-    } else {
-      _log('no Spotify token to hand the song to Connect with');
     }
-    _log('playing through the Spotify app on this phone');
-    playingOn = 'this phone';
-    _intendedDeviceId = null;
-    // Only a fallback if there was somewhere else it should have gone.
-    onPhoneAsFallback = HostSettings.deviceId != null || _ourDeviceId != null;
-    if (uri != null) {
-      await player.play(uri);
-    } else {
-      await player.playIndex(contextUri!, index!);
+    try {
+      await SpotifyWebApi.playHere(
+        token,
+        uri: uri,
+        contextUri: contextUri,
+        index: index,
+      );
+      playingOn = null;
+      _intendedDeviceId = null;
+      onPhoneAsFallback = false;
+      return true;
+    } catch (e) {
+      _log(
+        e is SpotifyApiException && e.status == 404
+            ? 'Spotify has nothing to play on'
+                  '${targetName == null ? '' : ' — "$targetName" is out of reach'}'
+            : 'Spotify Connect refused ($e)',
+      );
     }
-    return false;
+    return throughTheApp('playing through the Spotify app on this phone');
   }
 
   Future<void> _issuePlay() async {
@@ -1039,7 +1062,11 @@ class HostController extends ChangeNotifier {
   }
 
   /// Everything Spotify could play on right now, for the host's picker.
-  Future<List<({String id, String name, String type, bool isActive})>>
+  Future<
+    List<
+      ({String id, String name, String type, bool isActive, bool restricted})
+    >
+  >
   availableDevices() async {
     final token = await auth.validToken();
     if (token == null) return const [];
@@ -1048,8 +1075,23 @@ class HostController extends ChangeNotifier {
 
   /// Pins the party to a speaker (null = follow whatever Spotify is playing
   /// on) and moves the song that is playing there right away.
-  Future<void> pinDevice(String? id, String? name) async {
+  Future<void> pinDevice(
+    String? id,
+    String? name, {
+    bool restricted = false,
+  }) async {
     await HostSettings.setDevice(id, name);
+    if (restricted) {
+      ourDeviceRestricted = true;
+      _log(
+        '"$name" is driven through the Spotify app — start it playing there',
+      );
+      lastError =
+          '"$name" only takes commands from the Spotify app. Start playing on '
+          'it from Spotify once; the party then follows it.';
+      notifyListeners();
+      return;
+    }
     _log(
       id == null
           ? 'following Spotify\'s own device'
@@ -1096,25 +1138,26 @@ class HostController extends ChangeNotifier {
   /// Spotify app in those last seconds would otherwise have the next song
   /// yanked back to where it used to be — and since that becomes the
   /// remembered device, it would happen again every song.
-  Future<String?> _activeDevice(String token) async {
+  Future<PlaybackDevice?> _activeDevice(String token) async {
     try {
       final snap = await SpotifyWebApi.player(token)
           .timeout(const Duration(seconds: 4));
       final d = snap?.device;
-      if (d == null) return _ourDeviceId;
+      if (d == null) return null;
       if (d.id != _ourDeviceId) {
         _log(
           _ourDeviceId == null
-              ? 'playing on "${d.name}"'
+              ? 'playing on "${d.name}"${d.restricted ? ' (restricted)' : ''}'
               : 'playing on "${d.name}" now (was "$ourDeviceName")',
         );
         _ourDeviceId = d.id;
         ourDeviceName = d.name;
+        ourDeviceRestricted = d.restricted;
         notifyListeners();
       }
-      return d.id;
+      return d;
     } catch (_) {
-      return _ourDeviceId;
+      return null;
     }
   }
 
