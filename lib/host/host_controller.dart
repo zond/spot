@@ -13,6 +13,7 @@ import '../models/party.dart';
 import '../models/track.dart';
 import '../services/identity.dart';
 import '../services/messages.dart';
+import '../models/track.dart' as model;
 import '../services/spotify_public_page.dart';
 import '../services/spotify_web_api.dart';
 import '../services/switch_client.dart';
@@ -140,6 +141,11 @@ class HostController extends ChangeNotifier {
   bool _throughTheApp = false;
 
   final _metaCache = <String, ({DateTime at, String name, int? total})>{};
+
+  /// Songs of playlists Spotify won't let us read, taken off their public
+  /// page. Knowing the actual songs means they can be queued ahead like any
+  /// other, instead of being played blind by index.
+  final _publicTracks = <String, ({DateTime at, List<model.Track> tracks})>{};
 
   /// What the party has played, newest first — shown by both apps, and kept
   /// across restarts.
@@ -445,7 +451,12 @@ class HostController extends ChangeNotifier {
             continue;
           }
           party.commit(member, entry, playlistDone: r.$2);
-          return (member: member, entry: entry, track: null, index: r.$1);
+          // Knowing which song that index is lets it be queued ahead like any
+          // other; otherwise Spotify has to be pointed at the playlist itself.
+          final known = await _publicTrackAt(entry.playlist!.id, r.$1);
+          return known != null
+              ? (member: member, entry: entry, track: known, index: null)
+              : (member: member, entry: entry, track: null, index: r.$1);
         } else {
           try {
             final r = await _fromPlaylist(member, entry.playlist!);
@@ -596,6 +607,9 @@ class HostController extends ChangeNotifier {
       }
     } catch (_) {}
     final page = await SpotifyPublicPage.playlist(id);
+    if (page != null && page.tracks.isNotEmpty) {
+      _publicTracks[id] = (at: DateTime.now(), tracks: page.tracks);
+    }
     final result = page != null && !page.capped
         ? (name: name ?? page.name, total: page.count)
         : (name: name ?? page?.name ?? 'Playlist', total: null);
@@ -605,6 +619,29 @@ class HostController extends ChangeNotifier {
       total: result.total,
     );
     return result;
+  }
+
+  /// The song at [index] of a playlist we can't read, from its public page —
+  /// so it can be queued ahead by name instead of being played blind by
+  /// index. Null when the page is unavailable or stops short of that index
+  /// (it lists at most a hundred).
+  Future<model.Track?> _publicTrackAt(String id, int index) async {
+    var cached = _publicTracks[id];
+    if (cached == null ||
+        DateTime.now().difference(cached.at) > const Duration(minutes: 10)) {
+      try {
+        final page = await SpotifyPublicPage.playlist(id);
+        if (page != null && page.tracks.isNotEmpty) {
+          cached = _publicTracks[id] = (
+            at: DateTime.now(),
+            tracks: page.tracks,
+          );
+        }
+      } catch (_) {}
+    }
+    final tracks = cached?.tracks;
+    if (tracks == null || index >= tracks.length) return null;
+    return tracks[index];
   }
 
   Future<(int, bool)?> _nextIndex(Member m, PlaylistRef pl) async {

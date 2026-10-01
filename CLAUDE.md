@@ -45,6 +45,12 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 
 ## Conventions / decisions
 
+- Hidden playlists are resolved to real songs where possible: the public page
+  lists each track's uri, so the host maps "item n" to a `Track` and plays it
+  like any other (queueable, nameable, with a duration). Playing the playlist
+  context by index is only the fallback — for playlists over the page's
+  hundred-song cap, or when the page can't be read.
+
 - Keeping a cast alive: a Connect session to a speaker dies in the gaps when
   nothing plays, so for app-driven (restricted) devices the host hands Spotify
   the next song `Config.queueAheadOfEnd` before the current one ends

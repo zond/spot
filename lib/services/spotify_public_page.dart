@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/track.dart';
+
 /// Facts read off Spotify's public embed page (open.spotify.com/embed/…).
 ///
 /// Spotify's Web API withholds the contents — and the length — of playlists
@@ -21,12 +23,11 @@ abstract final class SpotifyPublicPage {
     dotAll: true,
   );
 
-  /// Name and number of songs of a public playlist. [capped] means the real
-  /// playlist is longer than [count] (the page stopped listing at
+  /// Name, length and songs of a public playlist. [capped] means the real
+  /// playlist is longer than the songs listed here (the page stops at
   /// [pageCap]). Null when the page can't be read or parsed.
-  static Future<({String name, int count, bool capped})?> playlist(
-    String id,
-  ) async {
+  static Future<({String name, int count, bool capped, List<Track> tracks})?>
+  playlist(String id) async {
     try {
       final resp = await http
           .get(
@@ -49,10 +50,25 @@ abstract final class SpotifyPublicPage {
               as Map?;
       final list = entity?['trackList'] as List?;
       if (list == null) return null;
+      final tracks = <Track>[];
+      for (final item in list) {
+        final map = item as Map;
+        final id = Track.idFromUri(map['uri'] as String? ?? '');
+        if (id == null) continue;
+        tracks.add(
+          Track(
+            id: id,
+            name: map['title'] as String? ?? '',
+            artists: map['subtitle'] as String? ?? '',
+            durationMs: (map['duration'] as num?)?.toInt() ?? 0,
+          ),
+        );
+      }
       return (
         name: entity?['name'] as String? ?? 'Playlist',
         count: list.length,
         capped: list.length >= pageCap,
+        tracks: tracks,
       );
     } catch (_) {
       return null;
