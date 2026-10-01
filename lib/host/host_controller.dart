@@ -135,6 +135,11 @@ class HostController extends ChangeNotifier {
   ({Member member, QueueItem entry, Track track})? _queuedAhead;
   Timer? _queueAhead;
 
+  /// The next song can only be started with a command (an item of a playlist
+  /// we can't read), so the switch is made a few seconds early, while the
+  /// speaker is still playing and can't drop the session.
+  bool _needsCommandHandover = false;
+
   /// True when the current song was started through the Spotify app rather
   /// than Spotify Connect — which is the case whenever the music is on a
   /// speaker that refuses Web API commands.
@@ -496,7 +501,22 @@ class HostController extends ChangeNotifier {
     if (_prepared == null) await _prepareNext();
     final next = _prepared;
     final track = next?.track;
-    if (next == null || track == null) return;
+    if (next == null) return;
+    if (track == null) {
+      // An item of a playlist we can't read: it has to be started with a
+      // command, so make the switch while the music is still playing rather
+      // than in the silence at the end, where the cast would be lost.
+      _needsCommandHandover = true;
+      _preempt?.cancel();
+      final untilSwitch =
+          _durationMs - positionMs - Config.contextSwitchLead.inMilliseconds;
+      _preempt = Timer(
+        Duration(milliseconds: max(0, untilSwitch)),
+        _preemptEnd,
+      );
+      _log('next one has to be switched to — doing it a few seconds early');
+      return;
+    }
     try {
       await player.queue(track.uri);
       _queuedAhead = (member: next.member, entry: next.entry, track: track);
@@ -940,6 +960,18 @@ class HostController extends ChangeNotifier {
       return throughTheApp('no Spotify token — using the Spotify app');
     }
 
+    // Already established that this speaker only takes commands from the
+    // Spotify app: go straight there rather than spending the moment of the
+    // switch on a lookup whose answer we know. The prefetch keeps an eye on
+    // whether the music has moved somewhere else.
+    if (_throughTheApp &&
+        ourDeviceRestricted &&
+        HostSettings.deviceId == null) {
+      return throughTheApp(
+        'playing on "$ourDeviceName" through the Spotify app',
+      );
+    }
+
     // Sonos and most other third-party speakers are "restricted": Spotify
     // rejects every Web API command aimed at them (403). They can only be
     // driven through the Spotify app, which is already casting to them — so
@@ -1139,7 +1171,10 @@ class HostController extends ChangeNotifier {
           () => unawaited(_queueNextSong()),
         );
       }
-      final untilCut = duration - pos - Config.preemptEnd.inMilliseconds;
+      final lead = _needsCommandHandover
+          ? Config.contextSwitchLead.inMilliseconds
+          : Config.preemptEnd.inMilliseconds;
+      final untilCut = duration - pos - lead;
       if (untilCut > 0) {
         _preempt = Timer(Duration(milliseconds: untilCut), _preemptEnd);
       }
@@ -1426,6 +1461,7 @@ class HostController extends ChangeNotifier {
   void _finishCurrent() {
     _recordHistory();
     _queuedAhead = null;
+    _needsCommandHandover = false;
     _queueAhead?.cancel();
     _deviceCheck?.cancel();
     _endCheck?.cancel();
