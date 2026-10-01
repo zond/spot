@@ -804,7 +804,7 @@ class HostController extends ChangeNotifier {
     final token = await auth.validToken();
     if (token != null) {
       final pinned = HostSettings.deviceId;
-      final target = pinned ?? _ourDeviceId;
+      final target = pinned ?? await _activeDevice(token);
       final targetName = pinned != null
           ? HostSettings.deviceName
           : ourDeviceName;
@@ -1081,24 +1081,40 @@ class HostController extends ChangeNotifier {
     _checkingDevice = true;
     try {
       final token = await auth.validToken();
-      if (token == null) return;
-      final snap = await SpotifyWebApi.player(token);
+      if (token != null) await _activeDevice(token);
+    } finally {
+      _checkingDevice = false;
+    }
+  }
+
+  /// Where Spotify says the music is coming out right now, remembered as the
+  /// party's device. Falls back to the last one we saw when Spotify can't
+  /// say (nothing playing, no network).
+  ///
+  /// Asked again at each song start rather than trusted from the prefetch
+  /// twelve seconds earlier: someone moving playback to a speaker in the
+  /// Spotify app in those last seconds would otherwise have the next song
+  /// yanked back to where it used to be — and since that becomes the
+  /// remembered device, it would happen again every song.
+  Future<String?> _activeDevice(String token) async {
+    try {
+      final snap = await SpotifyWebApi.player(token)
+          .timeout(const Duration(seconds: 4));
       final d = snap?.device;
-      if (d == null) return;
+      if (d == null) return _ourDeviceId;
       if (d.id != _ourDeviceId) {
-        if (_ourDeviceId != null) {
-          _log('playing on "${d.name}" now (was "$ourDeviceName")');
-        } else {
-          _log('playing on "${d.name}"');
-        }
+        _log(
+          _ourDeviceId == null
+              ? 'playing on "${d.name}"'
+              : 'playing on "${d.name}" now (was "$ourDeviceName")',
+        );
         _ourDeviceId = d.id;
         ourDeviceName = d.name;
         notifyListeners();
       }
+      return d.id;
     } catch (_) {
-      // Without device info we just keep using the last one we saw.
-    } finally {
-      _checkingDevice = false;
+      return _ourDeviceId;
     }
   }
 
