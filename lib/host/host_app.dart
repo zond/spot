@@ -657,11 +657,20 @@ class _HostPartyScreenState extends State<HostPartyScreen> {
               onPressed: _pickDevice,
               icon: const Icon(Icons.speaker, size: 16),
               label: Text(
-                HostSettings.deviceId == null
-                    ? 'Playing on: '
-                          '${c.playingOn ?? c.ourDeviceName ?? 'whatever Spotify uses'}'
-                    : 'Playing on: ${HostSettings.deviceName} (pinned)',
-                style: const TextStyle(fontSize: 12),
+                switch ((HostSettings.deviceName, c.onPhoneAsFallback)) {
+                  (final pinned?, true) =>
+                    'Playing on this phone — "$pinned" is out of reach',
+                  (final pinned?, false) => 'Playing on: $pinned (pinned)',
+                  (null, true) =>
+                    'Playing on this phone — tap to pin a speaker',
+                  (null, false) =>
+                    'Playing on: '
+                        '${c.playingOn ?? c.ourDeviceName ?? 'whatever Spotify uses'}',
+                },
+                style: TextStyle(
+                  fontSize: 12,
+                  color: c.onPhoneAsFallback ? Colors.orangeAccent : null,
+                ),
               ),
             ),
           ),

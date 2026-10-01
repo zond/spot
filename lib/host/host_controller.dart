@@ -79,6 +79,12 @@ class HostController extends ChangeNotifier {
   String? _intendedDeviceId;
   bool _movedBackThisSong = false;
   Timer? _deviceCheck;
+
+  /// True while the party is coming out of this phone only because the
+  /// speaker it should be on couldn't be reached — leaving the house with the
+  /// phone does this. The next song goes back to the speaker by itself once
+  /// Spotify can see it again.
+  bool onPhoneAsFallback = false;
   bool takenOver = false;
   String? takenOverBy;
 
@@ -813,6 +819,8 @@ class HostController extends ChangeNotifier {
           );
           playingOn = targetName;
           _intendedDeviceId = target;
+          if (onPhoneAsFallback) _log('back on "$targetName"');
+          onPhoneAsFallback = false;
           _scheduleDeviceCheck();
           return true;
         } catch (e) {
@@ -828,15 +836,24 @@ class HostController extends ChangeNotifier {
         );
         playingOn = null;
         _intendedDeviceId = null;
+        onPhoneAsFallback = false;
         return true;
       } catch (e) {
-        _log('Spotify Connect refused ($e)');
+        _log(
+          e is SpotifyApiException && e.status == 404
+              ? 'Spotify has nothing to play on'
+                    '${targetName == null ? '' : ' — "$targetName" is out of reach'}'
+              : 'Spotify Connect refused ($e)',
+        );
       }
     } else {
       _log('no Spotify token to hand the song to Connect with');
     }
     _log('playing through the Spotify app on this phone');
     playingOn = 'this phone';
+    _intendedDeviceId = null;
+    // Only a fallback if there was somewhere else it should have gone.
+    onPhoneAsFallback = HostSettings.deviceId != null || _ourDeviceId != null;
     if (uri != null) {
       await player.play(uri);
     } else {
