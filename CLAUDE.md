@@ -45,6 +45,14 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 
 ## Conventions / decisions
 
+- Keeping a cast alive: a Connect session to a speaker dies in the gaps when
+  nothing plays, so for app-driven (restricted) devices the host hands Spotify
+  the next song `Config.queueAheadOfEnd` before the current one ends
+  (`player.queue`) and lets it move on by itself — no command at the boundary,
+  no gap, no lapse. `_adoptQueued` takes the song over when it starts. Playlist
+  entries played by index can't be queued (the song isn't known until it
+  starts), so those keep the ordinary cut-and-play handover.
+
 - Playback transport: Sonos and most third-party speakers are `is_restricted`
   devices — Spotify rejects *every* Web API command aimed at them (403
   "Restricted device"). Those are driven through App Remote, which follows

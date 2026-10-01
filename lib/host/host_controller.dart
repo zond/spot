@@ -128,6 +128,17 @@ class HostController extends ChangeNotifier {
   ({Member member, QueueItem entry, Track? track, int? index})? _prepared;
   Timer? _prefetch;
 
+  /// The song already handed to Spotify to play after this one (see
+  /// [Config.queueAheadOfEnd]). While this is set the current song is left to
+  /// play out: no command at the boundary means nothing can go wrong there.
+  ({Member member, QueueItem entry, Track track})? _queuedAhead;
+  Timer? _queueAhead;
+
+  /// True when the current song was started through the Spotify app rather
+  /// than Spotify Connect — which is the case whenever the music is on a
+  /// speaker that refuses Web API commands.
+  bool _throughTheApp = false;
+
   final _metaCache = <String, ({DateTime at, String name, int? total})>{};
 
   /// What the party has played, newest first — shown by both apps, and kept
@@ -293,7 +304,9 @@ class HostController extends ChangeNotifier {
     _preempt?.cancel();
     _prefetch?.cancel();
     _deviceCheck?.cancel();
+    _queueAhead?.cancel();
     _prepared = null;
+    _queuedAhead = null;
     _pollTimer = _heartbeat = _tokenTimer = _broadcastDebounce = null;
     _reconnect = _endCheck = _startTimeout = null;
     await _stateSub?.cancel();
@@ -459,6 +472,67 @@ class HostController extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  /// Hands Spotify the next song while this one is still playing, so it
+  /// moves on by itself. Only for music on a speaker we can't command: there
+  /// a play command at the boundary is both unnecessary and the thing that
+  /// can lose the cast. Playlist entries we play by index can't be queued
+  /// (we don't know which song they are until it starts), so those keep the
+  /// ordinary handover.
+  Future<void> _queueNextSong() async {
+    if (_queuedAhead != null || !_throughTheApp || takenOver) return;
+    if (_prepared == null) await _prepareNext();
+    final next = _prepared;
+    final track = next?.track;
+    if (next == null || track == null) return;
+    try {
+      await player.queue(track.uri);
+      _queuedAhead = (member: next.member, entry: next.entry, track: track);
+      _prepared = null;
+      _log('queued "${track.name}" for ${next.member.name} up next');
+    } catch (e) {
+      _log('could not queue the next song ($e)');
+    }
+  }
+
+  /// Spotify moved on to the song we queued: take it over as the current one
+  /// without touching playback.
+  void _adoptQueued(PlayerState s) {
+    final queued = _queuedAhead!;
+    _queuedAhead = null;
+    _recordHistory();
+    _deviceCheck?.cancel();
+    _endCheck?.cancel();
+    _startTimeout?.cancel();
+    _preempt?.cancel();
+    _queueAhead?.cancel();
+    interlude = false;
+    _awaitingContext = false;
+    _contextEntry = null;
+    _interruptions.clear();
+    current = QueueItem(
+      id: '${queued.entry.id}:${queued.track.id}',
+      track: queued.track,
+    );
+    currentMember = queued.member;
+    party.removeIdle(playing: queued.member.uuid);
+    _expectedUri = queued.track.uri;
+    _sawPlaying = true;
+    _lastPos = s.playbackPosition;
+    _positionMs = s.playbackPosition;
+    _positionAt = DateTime.now();
+    paused = s.isPaused;
+    _durationMs = s.track?.duration ?? queued.track.durationMs;
+    _movedBackThisSong = false;
+    _log('"${queued.track.name}" came up by itself for ${queued.member.name}');
+    status = 'Playing for ${queued.member.name}';
+    unawaited(
+      HostForeground.update('${queued.track.name} — ${queued.member.name}'),
+    );
+    unawaited(_persistParty());
+    notifyListeners();
+    broadcast();
   }
 
   /// Resolves the next song ahead of time (see [_prepared]).
@@ -729,6 +803,9 @@ class HostController extends ChangeNotifier {
   /// out rather than cut into silence.
   Future<void> _preemptEnd() async {
     if (_expectedUri == null || takenOver || paused) return;
+    // Spotify already has the next song and will move on by itself; cutting
+    // in now would only risk the cast.
+    if (_queuedAhead != null) return;
     if (_prepared == null) await _prepareNext();
     if (_prepared == null) {
       _log('nothing queued to switch to — letting the song play out');
@@ -807,6 +884,7 @@ class HostController extends ChangeNotifier {
   }) async {
     Future<bool> throughTheApp(String why) async {
       _log(why);
+      _throughTheApp = true;
       playingOn = ourDeviceRestricted ? ourDeviceName : 'this phone';
       _intendedDeviceId = null;
       onPhoneAsFallback =
@@ -851,6 +929,7 @@ class HostController extends ChangeNotifier {
         );
         playingOn = targetName;
         _intendedDeviceId = target;
+        _throughTheApp = false;
         if (onPhoneAsFallback) _log('back on "$targetName"');
         onPhoneAsFallback = false;
         _scheduleDeviceCheck();
@@ -872,6 +951,7 @@ class HostController extends ChangeNotifier {
       );
       playingOn = null;
       _intendedDeviceId = null;
+      _throughTheApp = false;
       onPhoneAsFallback = false;
       return true;
     } catch (e) {
@@ -949,6 +1029,13 @@ class HostController extends ChangeNotifier {
         return;
       }
     }
+    if (!isOurs && _queuedAhead != null) {
+      final queued = _queuedAhead!.track.uri;
+      if (track.uri == queued || track.linkedFromUri == queued) {
+        _adoptQueued(s);
+        return;
+      }
+    }
     if (!isOurs) {
       // Before we've seen our track play, Spotify is still switching to it.
       // After, a different track means ours ended (autoplay kicked in),
@@ -1006,6 +1093,15 @@ class HostController extends ChangeNotifier {
         Duration(milliseconds: max(0, duration - pos) + 2500),
         _checkEnd,
       );
+      _queueAhead?.cancel();
+      if (_throughTheApp) {
+        final untilQueue =
+            duration - pos - Config.queueAheadOfEnd.inMilliseconds;
+        _queueAhead = Timer(
+          Duration(milliseconds: max(0, untilQueue)),
+          () => unawaited(_queueNextSong()),
+        );
+      }
       final untilCut = duration - pos - Config.preemptEnd.inMilliseconds;
       if (untilCut > 0) {
         _preempt = Timer(Duration(milliseconds: untilCut), _preemptEnd);
@@ -1292,6 +1388,8 @@ class HostController extends ChangeNotifier {
 
   void _finishCurrent() {
     _recordHistory();
+    _queuedAhead = null;
+    _queueAhead?.cancel();
     _deviceCheck?.cancel();
     _endCheck?.cancel();
     _startTimeout?.cancel();

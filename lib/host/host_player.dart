@@ -16,6 +16,11 @@ abstract interface class HostPlayer {
 
   /// Plays item [index] of a playlist/album context.
   Future<void> playIndex(String contextUri, int index);
+
+  /// Hands Spotify the song to play after the current one, so it moves on by
+  /// itself with no command at the boundary — the only way to keep a cast to
+  /// a speaker alive through a song change.
+  Future<void> queue(String uri);
   Future<void> pause();
   Future<void> resume();
 }
@@ -73,6 +78,9 @@ class AppRemotePlayer implements HostPlayer {
   @override
   Future<void> playIndex(String contextUri, int index) =>
       SpotifySdk.skipToIndex(spotifyUri: contextUri, trackIndex: index);
+
+  @override
+  Future<void> queue(String uri) => SpotifySdk.queue(spotifyUri: uri);
 
   @override
   Future<void> pause() => SpotifySdk.pause();

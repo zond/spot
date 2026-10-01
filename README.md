@@ -19,6 +19,12 @@ A fair, shared Spotify queue for parties.
   song's owner only paid for what was heard. Skipping *your own* pick is
   cheap — a flat `Config.ownSkipCost` (10 s) — since changing your mind about
   your own song costs nobody else anything.
+- **Speakers**: Sonos and most third-party Connect devices refuse Web API
+  commands outright, so the host drives those through the Spotify app and
+  hands it the next song 20 s early, letting Spotify move on by itself — the
+  gaps between songs are what kill a cast. Other devices are addressed
+  explicitly over Connect. The host screen says where the music is going and
+  can pin it to one speaker.
 - **Taken over**: Spotify allows one stream per account, so if someone else
   starts playing on the same account — on another device, or in the Spotify
   app on the host phone itself — the host notices (a foreign track appears;
