@@ -53,13 +53,14 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
   queue-ahead). Cost: a hidden playlist beyond the public page's hundred-song
   cap only offers its first hundred songs.
 
-- Keeping a cast alive: a Connect session to a speaker dies in the gaps when
-  nothing plays, so for app-driven (restricted) devices the host hands Spotify
-  the next song `Config.queueAheadOfEnd` before the current one ends
-  (`player.queue`) and lets it move on by itself — no command at the boundary,
-  no gap, no lapse. `_adoptQueued` takes the song over when it starts. Playlist
-  entries played by index can't be queued (the song isn't known until it
-  starts), so those keep the ordinary cut-and-play handover.
+- Keeping a cast alive: a Connect session dies in the gaps when nothing
+  plays, so the next song is started `Config.handoverLead` *before* the
+  current one ends — the command lands while music is still playing and the
+  speaker never falls idle. Playlist entries hand over as "item n of the
+  playlist" (`skipToIndex`, or `context_uri` + offset on Connect), which keeps
+  Spotify inside the playlist's own context instead of opening a new one. The
+  host logs how long each handover took ("handover took N ms"); that is the
+  number `handoverLead` should be tuned against.
 
 - Playback transport: Sonos and most third-party speakers are `is_restricted`
   devices — Spotify rejects *every* Web API command aimed at them (403

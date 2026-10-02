@@ -42,11 +42,12 @@ abstract final class Config {
   /// itself; a host that sees a newer member asks to be updated.
   static const protocolVersion = 4;
 
-  /// Songs are cut this long before their end and the next one started, so
-  /// Spotify never gets to continue a playlist context / autoplay something
-  /// foreign. App Remote's pause+play round trip is ~200–400 ms and our
-  /// position is extrapolated between state events, hence the margin.
-  static const preemptEnd = Duration(milliseconds: 700);
+  /// The next song is started this long before the current one ends. The
+  /// command lands while music is still playing, so the speaker never falls
+  /// idle and a cast to it survives; the overlap costs the tail of the song.
+  /// The host logs how long each handover actually took, which is the number
+  /// to tune this against.
+  static const handoverLead = Duration(seconds: 1);
 
   /// How many past songs the host keeps, and how many of those ride along in
   /// each member snapshot (they share a 4 KB push payload with everything
@@ -67,11 +68,6 @@ abstract final class Config {
   /// [interruptionWindow] before it accepts that someone else wants it.
   static const interruptionsBeforeGivingUp = 5;
   static const interruptionWindow = Duration(minutes: 3);
-
-  /// How long before a song ends the next one is handed to Spotify when the
-  /// music is on a speaker that only the Spotify app can drive: it then moves
-  /// on by itself, so there is no moment of silence for the cast to die in.
-  static const queueAheadOfEnd = Duration(seconds: 8);
 
   /// How long before a song ends the host works out what plays next, so the
   /// switch itself needs no network call.
