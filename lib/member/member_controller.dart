@@ -459,6 +459,9 @@ class MemberController extends ChangeNotifier {
     await _send(MsgType.enqueue, {'item': item.toJson()});
   }
 
+  /// Start my queue from the top again (and every playlist in it).
+  Future<void> restartQueue() => _send(MsgType.restart, {});
+
   Future<void> setModes({bool? shuffle, bool? repeat}) async {
     final v = view;
     if (v != null) {

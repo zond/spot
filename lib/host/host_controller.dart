@@ -1697,6 +1697,15 @@ class HostController extends ChangeNotifier {
             notifyListeners();
           }
         }());
+      case MsgType.restart:
+        if (party.restartQueue(uuid)) {
+          // Anything already worked out from this queue is out of date.
+          if (_prepared?.member.uuid == uuid) _prepared = null;
+          unawaited(_persistParty());
+          notifyListeners();
+          _maybePlayNext();
+          broadcast();
+        }
       case MsgType.modes:
         party.setModes(
           uuid,

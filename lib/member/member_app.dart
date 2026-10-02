@@ -890,6 +890,28 @@ class _PartyScreenState extends State<PartyScreen> {
                 onPressed: _rename,
                 icon: const Icon(Icons.edit, size: 18),
               ),
+              IconButton(
+                tooltip:
+                    'Start my queue from the top again — songs and '
+                    'playlists both begin from the first one',
+                visualDensity: VisualDensity.compact,
+                onPressed: v == null || v.myQueue.isEmpty
+                    ? null
+                    : () async {
+                        await c.restartQueue();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(
+                              const SnackBar(
+                                content: Text('Your queue starts from the top'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                        }
+                      },
+                icon: const Icon(Icons.restart_alt, size: 20),
+              ),
               _ModeButton(
                 tooltip: v?.shuffle == true
                     ? 'Shuffle on: every song (also inside playlists) is '

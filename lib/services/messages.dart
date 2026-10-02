@@ -29,6 +29,9 @@ abstract final class MsgType {
   /// {uuid, name, shuffle?, repeat?} — queue playback modes.
   static const modes = 'modes';
 
+  /// {uuid, name} — start my queue from the top again.
+  static const restart = 'restart';
+
   /// {uuid, name, rid, url} — please resolve this Spotify short link.
   static const resolve = 'resolve';
 

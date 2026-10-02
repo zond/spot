@@ -68,6 +68,10 @@ A fair, shared Spotify queue for parties.
   songs aren't listed on the member page. Songs are cut ~0.7 s before their
   end (`Config.preemptEnd`) so Spotify never continues the context or
   autoplays something foreign.
+- **Start from the top**: a member can reset where their queue had got to —
+  the queue cursor and every playlist entry's progress — so with shuffle off
+  the next turns play their songs in order from the first one. Airtime is
+  untouched; this is about order, not fairness.
 - **Shuffle / repeat** (per member): shuffle picks randomly with every song —
   loose or inside a playlist — equally likely (a 40-song playlist is 40
   tickets); repeat keeps entries after playing them and wraps around (a

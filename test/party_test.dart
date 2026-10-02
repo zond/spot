@@ -156,6 +156,29 @@ void main() {
     expect(turn(p, rng), isNotNull);
   });
 
+  test('restarting a queue sends it back to the top, airtime untouched', () {
+    final p = Party();
+    p.setModes('a', 'A', 1, repeat: true);
+    for (final id in ['x', 'y']) {
+      p.enqueue('a', 'A', q(id, 1000), 1);
+    }
+    p.enqueue('a', 'A', pl('P', 'Mix', 3), 1);
+    turn(p, rng); // x
+    turn(p, rng); // y
+    turn(p, rng); // first song of the playlist
+    final before = p.member('a')!.playedMs;
+    expect(p.member('a')!.cursor, isNot(0));
+    expect(p.member('a')!.queue.last.playlist!.nextIndex, 1);
+
+    expect(p.restartQueue('a'), isTrue);
+    final m = p.member('a')!;
+    expect(m.cursor, 0);
+    expect(m.queue.last.playlist!.nextIndex, 0);
+    expect(m.queue.every((e) => !e.playedThisCycle), isTrue);
+    expect(m.playedMs, before, reason: 'order only, not fairness');
+    expect(turn(p, rng)!.$2.id, 'x', reason: 'back to the top');
+  });
+
   test('dequeue/reorder keep the in-order cursor on the same entry', () {
     final p = Party();
     p.setModes('a', 'A', 1, repeat: true);

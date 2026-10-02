@@ -335,6 +335,20 @@ class Party {
     return true;
   }
 
+  /// Forgets where in their queue a member had got to: the queue starts from
+  /// the top again, and every playlist entry from its first song. Airtime is
+  /// not touched — this is about order, not fairness.
+  bool restartQueue(String uuid) {
+    final m = _members[uuid] ?? _parked[uuid];
+    if (m == null) return false;
+    m.cursor = 0;
+    for (final entry in m.queue) {
+      entry.playedThisCycle = false;
+      entry.playlist?.reset();
+    }
+    return true;
+  }
+
   /// Shuffle / repeat toggles (admits the member if needed, so the flags
   /// stick even before anything is queued).
   void setModes(
