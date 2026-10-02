@@ -258,6 +258,30 @@ abstract final class SpotifyWebApi {
     }
   }
 
+  /// Puts [uri] next in the queue of the device Spotify is playing on, so it
+  /// follows the current song with no command at the boundary. Needs
+  /// user-modify-playback-state.
+  static Future<void> queueTrack(
+    String token,
+    String uri, {
+    String? deviceId,
+  }) async {
+    final resp = await http
+        .post(
+          Uri.https('api.spotify.com', '/v1/me/player/queue', {
+            'uri': uri,
+            'device_id': ?deviceId,
+          }),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 10));
+    if (resp.statusCode != 204 &&
+        resp.statusCode != 202 &&
+        resp.statusCode != 200) {
+      throw SpotifyApiException(resp.statusCode, resp.body);
+    }
+  }
+
   /// Starts [uri] on [deviceId] at [positionMs] (transfers playback there).
   /// Needs user-modify-playback-state.
   static Future<void> playOn(

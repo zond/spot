@@ -140,6 +140,12 @@ class HostController extends ChangeNotifier {
   /// speaker is still playing and can't drop the session.
   bool _needsCommandHandover = false;
 
+  /// Songs handed to Spotify in advance that something else then overtook —
+  /// a skip, say. Spotify has no way to take them back out of its queue, so
+  /// they surface later; recognising them keeps that from being mistaken for
+  /// someone grabbing the session.
+  final Set<String> _stranded = {};
+
   /// True when the current song was started through the Spotify app rather
   /// than Spotify Connect — which is the case whenever the music is on a
   /// speaker that refuses Web API commands.
@@ -497,7 +503,7 @@ class HostController extends ChangeNotifier {
   /// (we don't know which song they are until it starts), so those keep the
   /// ordinary handover.
   Future<void> _queueNextSong() async {
-    if (_queuedAhead != null || !_throughTheApp || takenOver) return;
+    if (_queuedAhead != null || takenOver || _expectedUri == null) return;
     if (_prepared == null) await _prepareNext();
     final next = _prepared;
     final track = next?.track;
@@ -518,7 +524,17 @@ class HostController extends ChangeNotifier {
       return;
     }
     try {
-      await player.queue(track.uri);
+      if (_throughTheApp) {
+        await player.queue(track.uri);
+      } else {
+        final token = await auth.validToken();
+        if (token == null) return;
+        await SpotifyWebApi.queueTrack(
+          token,
+          track.uri,
+          deviceId: _intendedDeviceId,
+        );
+      }
       _queuedAhead = (member: next.member, entry: next.entry, track: track);
       _prepared = null;
       _log('queued "${track.name}" for ${next.member.name} up next');
@@ -1098,6 +1114,12 @@ class HostController extends ChangeNotifier {
         return;
       }
     }
+    if (!isOurs && _stranded.contains(track.uri)) {
+      _stranded.remove(track.uri);
+      _log('"${track.name}" was queued earlier and surfaced now — moving on');
+      _finishCurrent();
+      return;
+    }
     if (!isOurs && _queuedAhead != null) {
       final queued = _queuedAhead!.track.uri;
       if (track.uri == queued || track.linkedFromUri == queued) {
@@ -1460,6 +1482,11 @@ class HostController extends ChangeNotifier {
 
   void _finishCurrent() {
     _recordHistory();
+    final overtaken = _queuedAhead;
+    if (overtaken != null) {
+      _stranded.add(overtaken.track.uri);
+      if (_stranded.length > 8) _stranded.remove(_stranded.first);
+    }
     _queuedAhead = null;
     _needsCommandHandover = false;
     _queueAhead?.cancel();
