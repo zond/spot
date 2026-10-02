@@ -68,13 +68,6 @@ abstract final class Config {
   static const interruptionsBeforeGivingUp = 5;
   static const interruptionWindow = Duration(minutes: 3);
 
-  /// A song that can't be handed over in advance — an item of a playlist we
-  /// can't read, where the song isn't known until it starts — is switched to
-  /// this long before the current one ends. The command then lands while
-  /// music is still playing, so the speaker never goes idle and the cast
-  /// survives; the price is a few cut seconds.
-  static const contextSwitchLead = Duration(seconds: 3);
-
   /// How long before a song ends the next one is handed to Spotify when the
   /// music is on a speaker that only the Spotify app can drive: it then moves
   /// on by itself, so there is no moment of silence for the cast to die in.

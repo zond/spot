@@ -45,11 +45,13 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 
 ## Conventions / decisions
 
-- Hidden playlists are resolved to real songs where possible: the public page
-  lists each track's uri, so the host maps "item n" to a `Track` and plays it
-  like any other (queueable, nameable, with a duration). Playing the playlist
-  context by index is only the fallback — for playlists over the page's
-  hundred-song cap, or when the page can't be read.
+- One way to play a playlist entry, whoever owns it: `_playlistCatalogue`
+  fetches the whole song list — Web API where the host may read it, the public
+  page otherwise — and `_fromPlaylist` picks from that list by position. There
+  is no separate "play the context by index" path any more: it was rarely
+  trodden and therefore the buggy one (new contexts moving playback, no
+  queue-ahead). Cost: a hidden playlist beyond the public page's hundred-song
+  cap only offers its first hundred songs.
 
 - Keeping a cast alive: a Connect session to a speaker dies in the gaps when
   nothing plays, so for app-driven (restricted) devices the host hands Spotify

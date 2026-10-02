@@ -116,17 +116,12 @@ class HostController extends ChangeNotifier {
   /// credited for it and skipping it is free.
   bool interlude = false;
 
-  /// Playing a playlist the host can't read: we told the Spotify app to play
-  /// index n of the context and are waiting to learn which track that is.
-  bool _awaitingContext = false;
-  QueueItem? _contextEntry;
-
   /// What plays next, worked out while the current song is still playing so
   /// the switch itself costs nothing (no metadata fetch, no page load, no
   /// silence for Spotify to fill with music of its own). A queue change in
   /// the last seconds of a song lands one song later, which is a fair price
   /// for a gapless handover.
-  ({Member member, QueueItem entry, Track? track, int? index})? _prepared;
+  ({Member member, QueueItem entry, Track track})? _prepared;
   Timer? _prefetch;
 
   /// The song already handed to Spotify to play after this one (see
@@ -134,11 +129,6 @@ class HostController extends ChangeNotifier {
   /// play out: no command at the boundary means nothing can go wrong there.
   ({Member member, QueueItem entry, Track track})? _queuedAhead;
   Timer? _queueAhead;
-
-  /// The next song can only be started with a command (an item of a playlist
-  /// we can't read), so the switch is made a few seconds early, while the
-  /// speaker is still playing and can't drop the session.
-  bool _needsCommandHandover = false;
 
   /// Songs handed to Spotify in advance that something else then overtook —
   /// a skip, say. Spotify has no way to take them back out of its queue, so
@@ -182,7 +172,6 @@ class HostController extends ChangeNotifier {
     if (events.length > 40) events.removeLast();
   }
 
-  String? _lastFinishedUri;
   Timer? _preempt;
   String? _expectedUri;
   bool _sawPlaying = false;
@@ -422,11 +411,7 @@ class HostController extends ChangeNotifier {
     if (next != null && !party.members.contains(next.member)) next = null;
     next ??= await _resolveNext();
     if (next != null) {
-      if (next.index != null) {
-        await _startContext(next.member, next.entry, next.index!);
-      } else {
-        await _startTrack(next.member, next.entry, next.track!);
-      }
+      await _startTrack(next.member, next.entry, next.track);
       return;
     }
     _expectedUri = null;
@@ -442,7 +427,7 @@ class HostController extends ChangeNotifier {
 
   /// Works out whose song plays next and which song that is — including any
   /// network lookups — without touching playback.
-  Future<({Member member, QueueItem entry, Track? track, int? index})?>
+  Future<({Member member, QueueItem entry, Track track})?>
   _resolveNext() async {
     for (final member in party.candidates()) {
       var guard = 0;
@@ -453,21 +438,6 @@ class HostController extends ChangeNotifier {
         var done = false;
         if (entry.track != null) {
           track = entry.track;
-        } else if (entry.playlist!.viaApp) {
-          // Can't read the items: play by index through the Spotify app.
-          final r = await _nextIndex(member, entry.playlist!);
-          if (r == null) {
-            party.commit(member, entry, playlistDone: true);
-            if (member.repeat) party.dequeue(member.uuid, entry.id);
-            continue;
-          }
-          party.commit(member, entry, playlistDone: r.$2);
-          // Knowing which song that index is lets it be queued ahead like any
-          // other; otherwise Spotify has to be pointed at the playlist itself.
-          final known = await _publicTrackAt(entry.playlist!.id, r.$1);
-          return known != null
-              ? (member: member, entry: entry, track: known, index: null)
-              : (member: member, entry: entry, track: null, index: r.$1);
         } else {
           try {
             final r = await _fromPlaylist(member, entry.playlist!);
@@ -490,7 +460,7 @@ class HostController extends ChangeNotifier {
           continue;
         }
         party.commit(member, entry, playlistDone: done);
-        return (member: member, entry: entry, track: track, index: null);
+        return (member: member, entry: entry, track: track);
       }
     }
     return null;
@@ -506,23 +476,8 @@ class HostController extends ChangeNotifier {
     if (_queuedAhead != null || takenOver || _expectedUri == null) return;
     if (_prepared == null) await _prepareNext();
     final next = _prepared;
-    final track = next?.track;
     if (next == null) return;
-    if (track == null) {
-      // An item of a playlist we can't read: it has to be started with a
-      // command, so make the switch while the music is still playing rather
-      // than in the silence at the end, where the cast would be lost.
-      _needsCommandHandover = true;
-      _preempt?.cancel();
-      final untilSwitch =
-          _durationMs - positionMs - Config.contextSwitchLead.inMilliseconds;
-      _preempt = Timer(
-        Duration(milliseconds: max(0, untilSwitch)),
-        _preemptEnd,
-      );
-      _log('next one has to be switched to — doing it a few seconds early');
-      return;
-    }
+    final track = next.track;
     try {
       if (_throughTheApp) {
         await player.queue(track.uri);
@@ -555,8 +510,6 @@ class HostController extends ChangeNotifier {
     _preempt?.cancel();
     _queueAhead?.cancel();
     interlude = false;
-    _awaitingContext = false;
-    _contextEntry = null;
     _interruptions.clear();
     current = QueueItem(
       id: '${queued.entry.id}:${queued.track.id}',
@@ -657,163 +610,6 @@ class HostController extends ChangeNotifier {
     return result;
   }
 
-  /// The song at [index] of a playlist we can't read, from its public page —
-  /// so it can be queued ahead by name instead of being played blind by
-  /// index. Null when the page is unavailable or stops short of that index
-  /// (it lists at most a hundred).
-  Future<model.Track?> _publicTrackAt(String id, int index) async {
-    var cached = _publicTracks[id];
-    if (cached == null ||
-        DateTime.now().difference(cached.at) > const Duration(minutes: 10)) {
-      try {
-        final page = await SpotifyPublicPage.playlist(id);
-        if (page != null && page.tracks.isNotEmpty) {
-          cached = _publicTracks[id] = (
-            at: DateTime.now(),
-            tracks: page.tracks,
-          );
-        }
-      } catch (_) {}
-    }
-    final tracks = cached?.tracks;
-    if (tracks == null || index >= tracks.length) return null;
-    return tracks[index];
-  }
-
-  Future<(int, bool)?> _nextIndex(Member m, PlaylistRef pl) async {
-    // Songs come and go while the party runs, so the length is re-read every
-    // time we pick from the playlist. This runs in the prefetch, a good ten
-    // seconds before the song is needed, so nobody waits for it.
-    try {
-      final before = pl.total;
-      final meta = await playlistMeta(pl.id);
-      pl.name = meta.name;
-      if ((meta.total ?? 0) > 0) {
-        pl.resize(meta.total!);
-        if (before > 0 && pl.total != before) {
-          _log('"${pl.name}" is now ${pl.total} songs (was $before)');
-        }
-      }
-    } catch (_) {}
-    // Length unknown (Spotify withholds it for playlists the host neither
-    // owns nor collaborates on): play through in order — running past the
-    // last item is how we learn how long it is. Shuffle kicks in from the
-    // second pass, when the length is known.
-    if (!pl.totalKnown) {
-      if (!pl.viaApp) return null;
-      return (pl.nextIndex++, false);
-    }
-    if (!m.shuffle) {
-      if (pl.nextIndex >= pl.total) return null;
-      final idx = pl.nextIndex++;
-      return (idx, pl.nextIndex >= pl.total);
-    }
-    final free = [
-      for (var i = 0; i < pl.total; i++)
-        if (!pl.playedIds.contains('#$i')) i,
-    ];
-    if (free.isEmpty) return null;
-    final idx = free[_rng.nextInt(free.length)];
-    pl.playedIds.add('#$idx');
-    return (idx, pl.playedIds.length >= pl.total);
-  }
-
-  /// Starts item [idx] of a playlist the host can't read, via the Spotify app.
-  /// The actual track is learnt from the first player state that shows it.
-  Future<void> _startContext(Member member, QueueItem entry, int idx) async {
-    final pl = entry.playlist!;
-    interlude = false;
-    _awaitingContext = true;
-    _contextEntry = entry;
-    current = QueueItem(
-      id: '${entry.id}:#$idx',
-      track: Track(
-        id: '',
-        name: '${pl.name} · #${idx + 1}',
-        artists: 'starting…',
-        durationMs: 0,
-      ),
-    );
-    currentMember = member;
-    party.removeIdle(playing: member.uuid);
-    _expectedUri = null;
-    _sawPlaying = false;
-    _lastPos = 0;
-    _positionMs = 0;
-    _positionAt = DateTime.now();
-    paused = false;
-    _durationMs = 0;
-    _startAttempts = 0;
-    _movedBackThisSong = false;
-    _log('play item ${idx + 1} of "${pl.name}" for ${member.name}');
-    await _persistParty();
-    notifyListeners();
-    await _issuePlayIndex(pl.uri, idx);
-    broadcast();
-  }
-
-  Future<void> _issuePlayIndex(String contextUri, int idx) async {
-    _startAttempts++;
-    try {
-      await _startPlayback(contextUri: contextUri, index: idx);
-      status = 'Playing for ${currentMember?.name} (from a playlist)';
-    } catch (e) {
-      lastError = 'Play playlist item failed: $e';
-      _log('playlist item command failed: $e');
-    }
-    notifyListeners();
-    _startTimeout?.cancel();
-    // Nothing started: either Spotify is busy, or we asked for an item past
-    // the end of a playlist whose length we don't know — which is exactly how
-    // we find that length out.
-    _startTimeout = Timer(const Duration(seconds: 5), () {
-      if (!_awaitingContext) return;
-      if (_startAttempts < 2) {
-        unawaited(_issuePlayIndex(contextUri, idx));
-      } else {
-        _endOfContext(idx);
-      }
-    });
-  }
-
-  /// Item [idx] wouldn't play: treat it as the end of the playlist, remember
-  /// the length we just learnt, and move on.
-  void _endOfContext(int idx) {
-    final pl = _contextEntry?.playlist;
-    if (pl != null && !pl.totalKnown && idx > 0) {
-      pl.total = idx; // items 0..idx-1 exist, idx doesn't
-      pl.nextIndex = idx;
-      status = '${pl.name} has $idx songs';
-      _log('"${pl.name}" turned out to have $idx songs');
-      unawaited(_persistParty());
-    } else {
-      lastError = 'Spotify did not start item ${idx + 1}; skipping it';
-    }
-    _awaitingContext = false;
-    _finishCurrent();
-  }
-
-  /// Builds a [Track] from what App Remote reports is playing.
-  Track _trackFromState(PlayerState s) {
-    final t = s.track!;
-    final artists = t.artists
-        .map((a) => a.name)
-        .whereType<String>()
-        .where((n) => n.isNotEmpty)
-        .join(', ');
-    final raw = t.imageUri.raw;
-    final image = raw.startsWith('spotify:image:')
-        ? 'https://i.scdn.co/image/${raw.substring('spotify:image:'.length)}'
-        : null;
-    return Track(
-      id: Track.idFromUri(t.uri) ?? t.uri,
-      name: t.name,
-      artists: artists.isEmpty ? (t.artist.name ?? '') : artists,
-      durationMs: t.duration,
-      imageUrl: image,
-    );
-  }
-
   /// Files the song that just ended under what happened to it. Songs that
   /// never actually started (a playlist index that wouldn't play) leave no
   /// trace.
@@ -888,59 +684,6 @@ class HostController extends ChangeNotifier {
     _finishCurrent();
   }
 
-  /// Next song from a playlist entry, reading Spotify live. Returns the track
-  /// and whether the entry has now offered all its songs this cycle; null when
-  /// there is nothing (left) to play. In-order mode tracks an offset (so
-  /// reordering the playlist in Spotify shifts what comes next); shuffle mode
-  /// tracks played track ids (robust to edits).
-  Future<(Track, bool)?> _fromPlaylist(Member m, PlaylistRef pl) async {
-    final token = await auth.validToken();
-    if (token == null) throw StateError('no Spotify token');
-    if (!m.shuffle) {
-      var guard = 0;
-      while (guard++ < 20) {
-        final page = await SpotifyWebApi.playlistPage(
-          token,
-          pl.id,
-          pl.nextIndex,
-          limit: 10,
-        );
-        pl.total = page.total;
-        if (pl.nextIndex >= pl.total || page.fetched == 0) return null;
-        for (final (off, t) in page.items) {
-          if (off >= pl.nextIndex) {
-            pl.nextIndex = off + 1;
-            return (t, pl.nextIndex >= pl.total);
-          }
-        }
-        pl.nextIndex += page.fetched; // page had nothing playable
-      }
-      return null;
-    }
-    final head = await SpotifyWebApi.playlistPage(token, pl.id, 0, limit: 1);
-    pl.total = head.total;
-    if (pl.total == 0) return null;
-    var off = _rng.nextInt(pl.total);
-    var scanned = 0;
-    while (scanned < pl.total) {
-      final page = await SpotifyWebApi.playlistPage(
-        token,
-        pl.id,
-        off,
-        limit: 20,
-      );
-      if (page.fetched == 0) break;
-      for (final (_, t) in page.items) {
-        if (pl.playedIds.add(t.id)) {
-          return (t, pl.playedIds.length >= pl.total);
-        }
-      }
-      scanned += page.fetched;
-      off = (off + page.fetched) % pl.total;
-    }
-    return null;
-  }
-
   /// Starts something playing, preferring Spotify Connect over App Remote.
   ///
   /// The device is always named explicitly — the one the host pinned, else
@@ -950,11 +693,7 @@ class HostController extends ChangeNotifier {
   /// context without a device makes Spotify open a fresh session on its
   /// default device, which is this phone, since App Remote keeps its Spotify
   /// app awake. App Remote is the last resort, and plays on the phone.
-  Future<bool> _startPlayback({
-    String? uri,
-    String? contextUri,
-    int? index,
-  }) async {
+  Future<bool> _startPlayback(String uri) async {
     Future<bool> throughTheApp(String why) async {
       _log(why);
       _throughTheApp = true;
@@ -963,11 +702,7 @@ class HostController extends ChangeNotifier {
       onPhoneAsFallback =
           !ourDeviceRestricted &&
           (HostSettings.deviceId != null || _ourDeviceId != null);
-      if (uri != null) {
-        await player.play(uri);
-      } else {
-        await player.playIndex(contextUri!, index!);
-      }
+      await player.play(uri);
       return false;
     }
 
@@ -1005,13 +740,7 @@ class HostController extends ChangeNotifier {
     final targetName = pinned != null ? HostSettings.deviceName : active?.name;
     if (target != null) {
       try {
-        await SpotifyWebApi.playHere(
-          token,
-          uri: uri,
-          contextUri: contextUri,
-          index: index,
-          deviceId: target,
-        );
+        await SpotifyWebApi.playHere(token, uri: uri, deviceId: target);
         playingOn = targetName;
         _intendedDeviceId = target;
         _throughTheApp = false;
@@ -1028,12 +757,7 @@ class HostController extends ChangeNotifier {
       }
     }
     try {
-      await SpotifyWebApi.playHere(
-        token,
-        uri: uri,
-        contextUri: contextUri,
-        index: index,
-      );
+      await SpotifyWebApi.playHere(token, uri: uri);
       playingOn = null;
       _intendedDeviceId = null;
       _throughTheApp = false;
@@ -1050,12 +774,84 @@ class HostController extends ChangeNotifier {
     return throughTheApp('playing through the Spotify app on this phone');
   }
 
+  /// Every song of a playlist, from whichever source will give them: the Web
+  /// API for playlists the host may read, the public page otherwise. One list
+  /// means one way of playing a playlist entry — resolve the song, then play
+  /// it like any other — rather than a second, rarely trodden path for
+  /// playlists Spotify keeps from us.
+  Future<List<model.Track>?> _playlistCatalogue(PlaylistRef pl) async {
+    final cached = _publicTracks[pl.id];
+    if (cached != null &&
+        DateTime.now().difference(cached.at) < const Duration(minutes: 2)) {
+      return cached.tracks;
+    }
+    List<model.Track>? tracks;
+    var fromPublicPage = false;
+    try {
+      final token = await auth.validToken();
+      if (token != null) {
+        final col = await SpotifyWebApi.playlist(token, pl.id);
+        if (!col.viaApp) {
+          var guard = 0;
+          while (!col.complete && col.tracks.length < 1000 && guard++ < 40) {
+            await SpotifyWebApi.loadMore(token, col);
+          }
+          tracks = col.tracks;
+        }
+        pl.name = col.name;
+      }
+    } catch (e) {
+      _log('could not read "${pl.name}" from Spotify ($e)');
+    }
+    if (tracks == null || tracks.isEmpty) {
+      final page = await SpotifyPublicPage.playlist(pl.id);
+      if (page != null && page.tracks.isNotEmpty) {
+        tracks = page.tracks;
+        fromPublicPage = true;
+        pl.name = page.name;
+        if (page.capped) {
+          _log(
+            '"${page.name}" is longer than its public page shows — '
+            'using the first ${page.tracks.length} songs',
+          );
+        }
+      }
+    }
+    if (tracks == null || tracks.isEmpty) return null;
+    pl.viaApp = fromPublicPage;
+    pl.resize(tracks.length);
+    if (!pl.totalKnown) pl.total = tracks.length;
+    _publicTracks[pl.id] = (at: DateTime.now(), tracks: tracks);
+    return tracks;
+  }
+
+  /// The next song of a playlist entry, and whether the entry has now offered
+  /// all of them this cycle. In order it walks the list; shuffled it picks a
+  /// position it hasn't used this cycle — the same bookkeeping either way.
+  Future<(model.Track, bool)?> _fromPlaylist(Member m, PlaylistRef pl) async {
+    final tracks = await _playlistCatalogue(pl);
+    if (tracks == null || tracks.isEmpty) return null;
+    if (!m.shuffle) {
+      if (pl.nextIndex >= tracks.length) return null;
+      final track = tracks[pl.nextIndex++];
+      return (track, pl.nextIndex >= tracks.length);
+    }
+    final free = [
+      for (var i = 0; i < tracks.length; i++)
+        if (!pl.playedIds.contains('#$i')) i,
+    ];
+    if (free.isEmpty) return null;
+    final index = free[_rng.nextInt(free.length)];
+    pl.playedIds.add('#$index');
+    return (tracks[index], pl.playedIds.length >= tracks.length);
+  }
+
   Future<void> _issuePlay() async {
     final uri = _expectedUri;
     if (uri == null) return;
     _startAttempts++;
     try {
-      await _startPlayback(uri: uri);
+      await _startPlayback(uri);
       status = 'Playing for ${currentMember?.name}';
       unawaited(
         HostForeground.update(
@@ -1081,25 +877,6 @@ class HostController extends ChangeNotifier {
   }
 
   void _onPlayerState(PlayerState s) {
-    if (_awaitingContext) {
-      final t = s.track;
-      // The first state showing a *new* playing track is our playlist item.
-      if (t != null && !s.isPaused && t.uri != _lastFinishedUri) {
-        _awaitingContext = false;
-        _startTimeout?.cancel();
-        final adopted = _trackFromState(s);
-        current = QueueItem(id: current?.id ?? adopted.id, track: adopted);
-        _expectedUri = t.uri;
-        _durationMs = adopted.durationMs;
-        unawaited(
-          HostForeground.update('${adopted.name} — ${currentMember?.name}'),
-        );
-        unawaited(_persistParty());
-        broadcast();
-      } else {
-        return;
-      }
-    }
     final expected = _expectedUri;
     final track = s.track;
     if (expected == null || track == null) return;
@@ -1193,10 +970,7 @@ class HostController extends ChangeNotifier {
           () => unawaited(_queueNextSong()),
         );
       }
-      final lead = _needsCommandHandover
-          ? Config.contextSwitchLead.inMilliseconds
-          : Config.preemptEnd.inMilliseconds;
-      final untilCut = duration - pos - lead;
+      final untilCut = duration - pos - Config.preemptEnd.inMilliseconds;
       if (untilCut > 0) {
         _preempt = Timer(Duration(milliseconds: untilCut), _preemptEnd);
       }
@@ -1488,15 +1262,11 @@ class HostController extends ChangeNotifier {
       if (_stranded.length > 8) _stranded.remove(_stranded.first);
     }
     _queuedAhead = null;
-    _needsCommandHandover = false;
     _queueAhead?.cancel();
     _deviceCheck?.cancel();
     _endCheck?.cancel();
     _startTimeout?.cancel();
     _preempt?.cancel();
-    _lastFinishedUri = _expectedUri;
-    _awaitingContext = false;
-    _contextEntry = null;
     _expectedUri = null;
     current = null;
     currentMember = null;
