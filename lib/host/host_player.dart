@@ -21,6 +21,10 @@ abstract interface class HostPlayer {
   /// itself with no command at the boundary — the only way to keep a cast to
   /// a speaker alive through a song change.
   Future<void> queue(String uri);
+
+  /// Moves on to whatever is queued next — the way to consume a song handed
+  /// over in advance, instead of leaving it stranded in Spotify's queue.
+  Future<void> skipNext();
   Future<void> pause();
   Future<void> resume();
 }
@@ -81,6 +85,9 @@ class AppRemotePlayer implements HostPlayer {
 
   @override
   Future<void> queue(String uri) => SpotifySdk.queue(spotifyUri: uri);
+
+  @override
+  Future<void> skipNext() => SpotifySdk.skipNext();
 
   @override
   Future<void> pause() => SpotifySdk.pause();

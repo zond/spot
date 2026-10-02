@@ -282,6 +282,24 @@ abstract final class SpotifyWebApi {
     }
   }
 
+  /// Moves on to the next thing in the queue. Needs
+  /// user-modify-playback-state.
+  static Future<void> nextTrack(String token, {String? deviceId}) async {
+    final resp = await http
+        .post(
+          Uri.https('api.spotify.com', '/v1/me/player/next', {
+            'device_id': ?deviceId,
+          }),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 10));
+    if (resp.statusCode != 204 &&
+        resp.statusCode != 202 &&
+        resp.statusCode != 200) {
+      throw SpotifyApiException(resp.statusCode, resp.body);
+    }
+  }
+
   /// Starts [uri] on [deviceId] at [positionMs] (transfers playback there).
   /// Needs user-modify-playback-state.
   static Future<void> playOn(

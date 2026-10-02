@@ -78,7 +78,7 @@ abstract final class Config {
   /// How long before a song ends the next one is handed to Spotify when the
   /// music is on a speaker that only the Spotify app can drive: it then moves
   /// on by itself, so there is no moment of silence for the cast to die in.
-  static const queueAheadOfEnd = Duration(seconds: 20);
+  static const queueAheadOfEnd = Duration(seconds: 8);
 
   /// How long before a song ends the host works out what plays next, so the
   /// switch itself needs no network call.

@@ -1528,6 +1528,30 @@ class HostController extends ChangeNotifier {
     if (_expectedUri == null) return;
     _endReason = 'skipped';
     _endBy = 'the host';
+    unawaited(_skipCurrent());
+  }
+
+  /// Ends the current song early. When the next one has already been handed
+  /// to Spotify, move on to it rather than starting something else: Spotify
+  /// has no way to take a queued song back, so a discarded one would surface
+  /// at the next song change and be heard for a moment before it could be
+  /// replaced.
+  Future<void> _skipCurrent() async {
+    if (_queuedAhead != null) {
+      try {
+        if (_throughTheApp) {
+          await player.skipNext();
+        } else {
+          final token = await auth.validToken();
+          if (token == null) throw StateError('no token');
+          await SpotifyWebApi.nextTrack(token, deviceId: _intendedDeviceId);
+        }
+        _log('moved on to the song already queued');
+        return; // the player state tells us when it starts
+      } catch (e) {
+        _log('could not move on to the queued song ($e)');
+      }
+    }
     _finishCurrent();
   }
 
@@ -1638,7 +1662,7 @@ class HostController extends ChangeNotifier {
         status = notice!;
         unawaited(_persistParty());
         notifyListeners();
-        _finishCurrent();
+        unawaited(_skipCurrent());
       case MsgType.enqueue:
         final itemJson = m.body['item'];
         if (itemJson is! Map<String, dynamic>) return;
