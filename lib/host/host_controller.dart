@@ -541,6 +541,10 @@ class HostController extends ChangeNotifier {
     notifyListeners();
     await _issuePlay();
     broadcast();
+    // Work out what follows straight away rather than only near the end: a
+    // skip then has something ready, instead of leaving Spotify to fill the
+    // wait with the next item of whatever context it is in.
+    unawaited(_prepareNext());
   }
 
   /// Next index to play from a playlist the host can't read (in order, or a
@@ -1408,6 +1412,7 @@ class HostController extends ChangeNotifier {
           return;
         }
         if (party.enqueue(uuid, name, item, now)) {
+          _prepared = null; // worked out from a queue that just changed
           unawaited(_persistParty());
           notifyListeners();
           _maybePlayNext();
@@ -1418,6 +1423,7 @@ class HostController extends ChangeNotifier {
         if (itemId is! String) return;
         if (party.dequeue(uuid, itemId)) {
           party.removeIdle(playing: currentMember?.uuid);
+          _prepared = null; // worked out from a queue that just changed
           unawaited(_persistParty());
           notifyListeners();
           broadcast();
@@ -1426,6 +1432,7 @@ class HostController extends ChangeNotifier {
         final ids = m.body['itemIds'];
         if (ids is! List) return;
         if (party.reorder(uuid, ids.whereType<String>().toList())) {
+          _prepared = null; // worked out from a queue that just changed
           unawaited(_persistParty());
           notifyListeners();
           broadcast();
@@ -1493,6 +1500,7 @@ class HostController extends ChangeNotifier {
           broadcast();
         }
       case MsgType.modes:
+        _prepared = null; // shuffle or repeat changes what comes next
         party.setModes(
           uuid,
           name,
