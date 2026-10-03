@@ -537,9 +537,11 @@ class HostController extends ChangeNotifier {
       'play "${track.name}" for ${member.name}'
       '${index == null ? '' : ' (item ${index + 1} of "${entry.playlist!.name}")'}',
     );
-    await _persistParty();
-    notifyListeners();
+    // The command first: saving state and telling everyone can wait the few
+    // milliseconds, the song cannot.
     await _issuePlay();
+    unawaited(_persistParty());
+    notifyListeners();
     broadcast();
     // Work out what follows straight away rather than only near the end: a
     // skip then has something ready, instead of leaving Spotify to fill the
@@ -704,21 +706,32 @@ class HostController extends ChangeNotifier {
       );
     }
 
+    // Which device, without asking Spotify first: the switch happens a second
+    // before the song ends and a lookup there would spend much of that second.
+    // The prefetch refreshes this every song, and a song that still lands on
+    // the wrong device is moved back by [_scheduleDeviceCheck].
+    final pinned = HostSettings.deviceId;
+    var target = pinned ?? _ourDeviceId;
+    var targetName = pinned != null ? HostSettings.deviceName : ourDeviceName;
+    var restricted = ourDeviceRestricted;
+    if (target == null) {
+      // Nothing known yet — this is the one case worth waiting for an answer.
+      final active = await _activeDevice(token);
+      target = active?.id;
+      targetName = active?.name;
+      restricted = active?.restricted ?? false;
+    }
+
     // Sonos and most other third-party speakers are "restricted": Spotify
     // rejects every Web API command aimed at them (403). They can only be
     // driven through the Spotify app, which is already casting to them — so
     // that is what we use, and it keeps the music where it is.
-    final active = await _activeDevice(token);
-    if (active != null && active.restricted) {
+    if (target != null && restricted) {
       return throughTheApp(
-        '"${active.name}" only takes commands from the Spotify app — '
+        '"$targetName" only takes commands from the Spotify app — '
         'playing through it',
       );
     }
-
-    final pinned = HostSettings.deviceId;
-    final target = pinned ?? active?.id;
-    final targetName = pinned != null ? HostSettings.deviceName : active?.name;
     if (target != null) {
       try {
         await SpotifyWebApi.playHere(
