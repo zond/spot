@@ -758,11 +758,13 @@ class HostController extends ChangeNotifier {
     return throughTheApp('playing through the Spotify app on this phone');
   }
 
-  /// Every song of a playlist, from whichever source will give them: the Web
-  /// API for playlists the host may read, the public page otherwise. One list
-  /// means one way of playing a playlist entry — resolve the song, then play
-  /// it like any other — rather than a second, rarely trodden path for
-  /// playlists Spotify keeps from us.
+  /// Every song of a playlist, and so its length, from one place: the public
+  /// page. Spotify's own API is the fallback, for playlists that page can't
+  /// show — a private one of the host's — and for the tail of playlists
+  /// longer than the hundred songs it lists.
+  ///
+  /// One source for every playlist means the path is exercised at every
+  /// party rather than only when a guest brings a playlist of their own.
   Future<List<model.Track>?> _playlistCatalogue(PlaylistRef pl) async {
     final cached = _publicTracks[pl.id];
     if (cached != null &&
@@ -771,34 +773,45 @@ class HostController extends ChangeNotifier {
     }
     List<model.Track>? tracks;
     var fromPublicPage = false;
+    var capped = false;
     try {
-      final token = await auth.validToken();
-      if (token != null) {
-        final col = await SpotifyWebApi.playlist(token, pl.id);
-        if (!col.viaApp) {
-          var guard = 0;
-          while (!col.complete && col.tracks.length < 1000 && guard++ < 40) {
-            await SpotifyWebApi.loadMore(token, col);
-          }
-          tracks = col.tracks;
-        }
-        pl.name = col.name;
-      }
-    } catch (e) {
-      _log('could not read "${pl.name}" from Spotify ($e)');
-    }
-    if (tracks == null || tracks.isEmpty) {
       final page = await SpotifyPublicPage.playlist(pl.id);
       if (page != null && page.tracks.isNotEmpty) {
         tracks = page.tracks;
         fromPublicPage = true;
+        capped = page.capped;
         pl.name = page.name;
-        if (page.capped) {
-          _log(
-            '"${page.name}" is longer than its public page shows — '
-            'using the first ${page.tracks.length} songs',
-          );
+      }
+    } catch (e) {
+      _log('could not read "${pl.name}" from its public page ($e)');
+    }
+    // Either the page wouldn't show it, or it stopped at a hundred songs and
+    // Spotify will give us the rest.
+    if (tracks == null || capped) {
+      try {
+        final token = await auth.validToken();
+        if (token != null) {
+          final col = await SpotifyWebApi.playlist(token, pl.id);
+          if (!col.viaApp && col.tracks.isNotEmpty) {
+            var guard = 0;
+            while (!col.complete && col.tracks.length < 1000 && guard++ < 40) {
+              await SpotifyWebApi.loadMore(token, col);
+            }
+            if (col.tracks.length > (tracks?.length ?? 0)) {
+              tracks = col.tracks;
+              fromPublicPage = false;
+              pl.name = col.name;
+            }
+          }
         }
+      } catch (e) {
+        _log('could not read "${pl.name}" from Spotify ($e)');
+      }
+      if (capped && fromPublicPage) {
+        _log(
+          '"${pl.name}" is longer than its public page shows — '
+          'using the first ${tracks!.length} songs',
+        );
       }
     }
     if (tracks == null || tracks.isEmpty) return null;
@@ -861,16 +874,22 @@ class HostController extends ChangeNotifier {
     } catch (e) {
       lastError = 'Play failed: $e';
       _log('play command failed: $e');
+      // An index that no longer exists looks exactly like this: drop the copy
+      // of the playlist we picked it from so the next turn reads a fresh one.
+      _forgetPlaylistCopy();
     }
     notifyListeners();
     _startTimeout?.cancel();
-    _startTimeout = Timer(const Duration(seconds: 10), () {
+    _startTimeout = Timer(const Duration(seconds: 4), () {
       if (_expectedUri != uri || _sawPlaying) return;
-      if (_startAttempts < 3) {
+      if (_startAttempts < 2) {
         unawaited(_issuePlay());
       } else {
-        lastError =
-            'Spotify did not start ${current?.track?.name}; skipping it';
+        // Most likely the playlist is shorter than the copy we read from and
+        // the position no longer exists, so forget that copy before moving on.
+        _forgetPlaylistCopy();
+        lastError = 'Spotify did not start ${current?.track?.name}; moving on';
+        _log('"${current?.track?.name}" would not start — moving on');
         _finishCurrent();
       }
     });
@@ -968,6 +987,17 @@ class HostController extends ChangeNotifier {
     }
     if (pausedChanged) broadcast();
     notifyListeners();
+  }
+
+  /// Forgets the stored songs of the playlist the current song came from —
+  /// after a failure to start, since a playlist that has shrunk since we read
+  /// it is the likeliest reason a position won't play.
+  void _forgetPlaylistCopy() {
+    final uri = _handoverContextUri;
+    if (uri == null) return;
+    final id = uri.split(':').last;
+    _publicTracks.remove(id);
+    _metaCache.remove(id);
   }
 
   /// Spotify does not always honour the device a play command names — a

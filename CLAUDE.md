@@ -46,8 +46,13 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 ## Conventions / decisions
 
 - One way to play a playlist entry, whoever owns it: `_playlistCatalogue`
-  fetches the whole song list — Web API where the host may read it, the public
-  page otherwise — and `_fromPlaylist` picks from that list by position. There
+  reads the whole song list from the *public page* (one source, so the path is
+  exercised at every party), falling back to the Web API only for playlists
+  the page can't show — a private one of the host's — and for the tail beyond
+  its hundred-song limit. `_fromPlaylist` picks from that list by position.
+  A position that no longer exists (the playlist shrank since it was read)
+  shows up as a song that won't start: the stored copy is dropped and the
+  turn moves on, so the next read is fresh. There
   is no separate "play the context by index" path any more: it was rarely
   trodden and therefore the buggy one (new contexts moving playback, no
   queue-ahead). Cost: a hidden playlist beyond the public page's hundred-song
