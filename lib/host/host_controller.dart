@@ -83,8 +83,24 @@ class HostController extends ChangeNotifier {
   int? _handoverIndex;
 
   /// When the handover command went out, to measure how long Spotify takes to
-  /// act on it — the number [Config.handoverLead] should be tuned against.
+  /// act on it.
   DateTime? _handoverAt;
+
+  /// How long the last few handovers took. Spotify is slower on a speaker
+  /// than on the phone, and slower on some nights than others, so the lead
+  /// follows the measurements instead of being guessed once.
+  final List<int> _handoverTimes = [];
+
+  Duration get handoverLead {
+    if (_handoverTimes.isEmpty) return Config.handoverLead;
+    final slowest = _handoverTimes.reduce(max);
+    return Duration(
+      milliseconds: (slowest + 500).clamp(
+        Config.handoverLead.inMilliseconds,
+        Config.handoverLeadMax.inMilliseconds,
+      ),
+    );
+  }
 
   String? _intendedDeviceId;
   bool _movedBackThisSong = false;
@@ -371,6 +387,10 @@ class HostController extends ChangeNotifier {
       if (!c.connected) {
         status =
             'Spotify disconnected${c.message == null ? '' : ': ${c.message}'}';
+        _log(
+          'lost the connection to the Spotify app'
+          '${c.message == null ? '' : ' (${c.message})'}',
+        );
         _scheduleReconnect();
       }
       notifyListeners();
@@ -385,11 +405,30 @@ class HostController extends ChangeNotifier {
       try {
         await _connectPlayer();
         status = 'Reconnected to Spotify';
-        if (_expectedUri != null) {
-          _sawPlaying = false;
-          await _issuePlay();
-        } else {
+        _log('reconnected to the Spotify app');
+        if (_expectedUri == null) {
           _maybePlayNext();
+        } else {
+          // The connection to the app can drop while the music plays on
+          // perfectly well — on a speaker, it isn't even involved. Starting
+          // the song again here is how a party jumps in the middle of a song
+          // (and lands on the phone). So look first.
+          PlayerState? state;
+          try {
+            state = await player.state();
+          } catch (_) {}
+          final playing = state?.track;
+          final stillOurs =
+              playing != null &&
+              (playing.uri == _expectedUri ||
+                  playing.linkedFromUri == _expectedUri);
+          if (stillOurs && !state!.isPaused) {
+            _log('"${playing.name}" never stopped — carrying on');
+            _onPlayerState(state);
+          } else {
+            _sawPlaying = false;
+            await _issuePlay();
+          }
         }
       } catch (e) {
         lastError = 'Reconnect: $e';
@@ -928,7 +967,12 @@ class HostController extends ChangeNotifier {
       if (!_sawPlaying && _handoverAt != null) {
         final took = DateTime.now().difference(_handoverAt!).inMilliseconds;
         _handoverAt = null;
-        _log('handover took $took ms');
+        _handoverTimes.add(took);
+        if (_handoverTimes.length > 5) _handoverTimes.removeAt(0);
+        _log(
+          'handover took $took ms '
+          '(switching ${handoverLead.inMilliseconds} ms before the end)',
+        );
       }
       _sawPlaying = true;
     }
@@ -974,7 +1018,7 @@ class HostController extends ChangeNotifier {
         Duration(milliseconds: max(0, duration - pos) + 2500),
         _checkEnd,
       );
-      final untilHandover = duration - pos - Config.handoverLead.inMilliseconds;
+      final untilHandover = duration - pos - handoverLead.inMilliseconds;
       if (untilHandover > 0) {
         _preempt = Timer(Duration(milliseconds: untilHandover), _preemptEnd);
       }

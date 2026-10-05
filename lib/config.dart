@@ -49,6 +49,10 @@ abstract final class Config {
   /// to tune this against.
   static const handoverLead = Duration(seconds: 1);
 
+  /// …but never more than this, however slow Spotify is being: past here the
+  /// tail of every song would be noticeably clipped.
+  static const handoverLeadMax = Duration(seconds: 3);
+
   /// How many past songs the host keeps, and how many of those ride along in
   /// each member snapshot (they share a 4 KB push payload with everything
   /// else, so the members' list is the shorter one).
