@@ -409,23 +409,28 @@ class HostController extends ChangeNotifier {
         if (_expectedUri == null) {
           _maybePlayNext();
         } else {
-          // The connection to the app can drop while the music plays on
-          // perfectly well — on a speaker, it isn't even involved. Starting
-          // the song again here is how a party jumps in the middle of a song
-          // (and lands on the phone). So look first.
+          // The connection to the app drops when Android reclaims Spotify;
+          // the music carries on without it, and on a speaker the app isn't
+          // even in the path. A freshly reconnected app has no cast of its
+          // own, so a play command here starts on the phone — which is how a
+          // party loses its speaker. Never command while something is
+          // playing: just pick the state back up, and let the ordinary rules
+          // deal with it if Spotify has moved on to something of its own.
           PlayerState? state;
-          try {
-            state = await player.state();
-          } catch (_) {}
+          for (var attempt = 0; attempt < 3; attempt++) {
+            try {
+              state = await player.state();
+            } catch (_) {}
+            if (state?.track != null) break;
+            await Future<void>.delayed(const Duration(seconds: 1));
+          }
           final playing = state?.track;
-          final stillOurs =
-              playing != null &&
-              (playing.uri == _expectedUri ||
-                  playing.linkedFromUri == _expectedUri);
-          if (stillOurs && !state!.isPaused) {
-            _log('"${playing.name}" never stopped — carrying on');
+          if (state != null && playing != null && !state.isPaused) {
+            _log('"${playing.name}" is playing — carrying on');
+            unawaited(_learnDevice());
             _onPlayerState(state);
           } else {
+            _log('nothing was playing — starting the party again');
             _sawPlaying = false;
             await _issuePlay();
           }
