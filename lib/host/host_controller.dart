@@ -140,11 +140,6 @@ class HostController extends ChangeNotifier {
   _prepared;
   Timer? _prefetch;
 
-  /// True when the current song was started through the Spotify app rather
-  /// than Spotify Connect — which is the case whenever the music is on a
-  /// speaker that refuses Web API commands.
-  bool _throughTheApp = false;
-
   final _metaCache = <String, ({DateTime at, String name, int? total})>{};
 
   /// Songs of playlists Spotify won't let us read, taken off their public
@@ -685,14 +680,8 @@ class HostController extends ChangeNotifier {
   }) async {
     Future<bool> throughTheApp(String why) async {
       _log(why);
-      _throughTheApp = true;
-      // Whether this actually reached the speaker is something only the next
-      // device lookup can say, so don't claim either way.
-      playingOn = null;
       _intendedDeviceId = null;
-      onPhoneAsFallback =
-          !ourDeviceRestricted &&
-          (HostSettings.deviceId != null || _ourDeviceId != null);
+      playingOn = null;
       if (contextUri != null && index != null) {
         await player.playIndex(contextUri, index);
       } else {
@@ -701,49 +690,29 @@ class HostController extends ChangeNotifier {
       return false;
     }
 
+    // Unless the host has pinned a speaker, the Spotify app is the right
+    // thing to drive: it carries on wherever it is already playing, casting
+    // included. Naming a device instead means trusting the Web API's idea of
+    // where the music is — and when that idea is the phone while the sound is
+    // actually coming out of a speaker, saying so *moves* it to the phone.
+    final pinned = HostSettings.deviceId;
+    if (pinned == null) {
+      try {
+        return await throughTheApp(
+          'playing through the Spotify app (stays where the music is)',
+        );
+      } catch (e) {
+        _log('the Spotify app would not play it ($e)');
+      }
+    }
+
     final token = await auth.validToken();
     if (token == null) {
       return throughTheApp('no Spotify token — using the Spotify app');
     }
 
-    // Already established that this speaker only takes commands from the
-    // Spotify app: go straight there rather than spending the moment of the
-    // switch on a lookup whose answer we know. The prefetch keeps an eye on
-    // whether the music has moved somewhere else.
-    if (_throughTheApp &&
-        ourDeviceRestricted &&
-        HostSettings.deviceId == null) {
-      return throughTheApp(
-        'playing on "$ourDeviceName" through the Spotify app',
-      );
-    }
-
-    // Which device, without asking Spotify first: the switch happens a second
-    // before the song ends and a lookup there would spend much of that second.
-    // The prefetch refreshes this every song, and a song that still lands on
-    // the wrong device is moved back by [_scheduleDeviceCheck].
-    final pinned = HostSettings.deviceId;
-    var target = pinned ?? _ourDeviceId;
-    var targetName = pinned != null ? HostSettings.deviceName : ourDeviceName;
-    var restricted = ourDeviceRestricted;
-    if (target == null) {
-      // Nothing known yet — this is the one case worth waiting for an answer.
-      final active = await _activeDevice(token);
-      target = active?.id;
-      targetName = active?.name;
-      restricted = active?.restricted ?? false;
-    }
-
-    // Sonos and most other third-party speakers are "restricted": Spotify
-    // rejects every Web API command aimed at them (403). They can only be
-    // driven through the Spotify app, which is already casting to them — so
-    // that is what we use, and it keeps the music where it is.
-    if (target != null && restricted) {
-      return throughTheApp(
-        '"$targetName" only takes commands from the Spotify app — '
-        'playing through it',
-      );
-    }
+    final target = pinned ?? _ourDeviceId;
+    final targetName = pinned != null ? HostSettings.deviceName : ourDeviceName;
     if (target != null) {
       try {
         await SpotifyWebApi.playHere(
@@ -755,7 +724,6 @@ class HostController extends ChangeNotifier {
         );
         playingOn = targetName;
         _intendedDeviceId = target;
-        _throughTheApp = false;
         if (onPhoneAsFallback) _log('back on "$targetName"');
         onPhoneAsFallback = false;
         _scheduleDeviceCheck();
@@ -777,7 +745,6 @@ class HostController extends ChangeNotifier {
       );
       playingOn = null;
       _intendedDeviceId = null;
-      _throughTheApp = false;
       onPhoneAsFallback = false;
       return true;
     } catch (e) {

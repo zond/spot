@@ -68,12 +68,14 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
   host logs how long each handover took ("handover took N ms"); that is the
   number `handoverLead` should be tuned against.
 
-- Playback transport: Sonos and most third-party speakers are `is_restricted`
-  devices — Spotify rejects *every* Web API command aimed at them (403
-  "Restricted device"). Those are driven through App Remote, which follows
-  whatever the phone's Spotify app is casting to. The Web API is used for
-  unrestricted devices (and to learn which device is active), since App Remote
-  can otherwise pull playback back to the phone.
+- Playback transport: App Remote by default — it continues wherever the
+  Spotify app is already playing, casting included, and asks no questions
+  about devices. The Web API is used only when the host has *pinned* a
+  speaker, or as a fallback when the app won't play. Naming a device means
+  trusting `GET /me/player`, and that can report the phone while the sound is
+  actually coming out of a speaker; saying so then moves the music to the
+  phone (seen in the field). Restricted devices (Sonos) reject Web API
+  commands outright anyway.
 
 - `Config.spotifyScopes` must include `app-remote-control`: the Spotify app's own
   App Remote consent activity is blocked by Android (BAL) while Spot is in front,
