@@ -53,6 +53,12 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
   queue-ahead). Cost: a hidden playlist beyond the public page's hundred-song
   cap only offers its first hundred songs.
 
+- An app update must not pause playback: `_teardown` only pauses when the
+  host deliberately ends the party (`stop`), because a paused speaker drops
+  its Spotify session and the party then comes back on the phone. The device
+  the party was on is also remembered across restarts
+  (`HostSettings.rememberDevice`).
+
 - Keeping a cast alive: a Connect session dies in the gaps when nothing
   plays, so the next song is started `Config.handoverLead` *before* the
   current one ends — the command lands while music is still playing and the

@@ -234,6 +234,10 @@ class HostController extends ChangeNotifier {
     try {
       await _restoreParty();
       await _restoreHistory();
+      // Where the music was before this host was started (an update, say).
+      _ourDeviceId ??= HostSettings.lastDeviceId;
+      ourDeviceName ??= HostSettings.lastDeviceName;
+      ourDeviceRestricted = HostSettings.lastDeviceRestricted;
 
       status = 'Checking Spotify login…';
       notifyListeners();
@@ -290,7 +294,7 @@ class HostController extends ChangeNotifier {
   }
 
   Future<void> stop() async {
-    await _teardown();
+    await _teardown(stopMusic: true);
     phase = HostPhase.idle;
     status = '';
     notifyListeners();
@@ -303,7 +307,7 @@ class HostController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _teardown() async {
+  Future<void> _teardown({bool stopMusic = false}) async {
     _pollTimer?.cancel();
     _heartbeat?.cancel();
     _tokenTimer?.cancel();
@@ -327,9 +331,15 @@ class HostController extends ChangeNotifier {
     takenOverLocally = false;
     takenOverBy = null;
     if (spotifyConnected) {
-      try {
-        await player.pause();
-      } catch (_) {}
+      // Only when the host is deliberately ending the party. Pausing on the
+      // way out of an app update would idle the speaker, and an idle speaker
+      // drops its Spotify session — which is how a party comes back on the
+      // phone after an update.
+      if (stopMusic) {
+        try {
+          await player.pause();
+        } catch (_) {}
+      }
       try {
         await player.disconnect();
       } catch (_) {}
@@ -676,7 +686,9 @@ class HostController extends ChangeNotifier {
     Future<bool> throughTheApp(String why) async {
       _log(why);
       _throughTheApp = true;
-      playingOn = ourDeviceRestricted ? ourDeviceName : 'this phone';
+      // Whether this actually reached the speaker is something only the next
+      // device lookup can say, so don't claim either way.
+      playingOn = null;
       _intendedDeviceId = null;
       onPhoneAsFallback =
           !ourDeviceRestricted &&
@@ -1123,6 +1135,7 @@ class HostController extends ChangeNotifier {
         _ourDeviceId = d.id;
         ourDeviceName = d.name;
         ourDeviceRestricted = d.restricted;
+        unawaited(HostSettings.rememberDevice(d.id, d.name, d.restricted));
         notifyListeners();
       }
       return d;

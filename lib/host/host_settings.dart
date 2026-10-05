@@ -8,6 +8,9 @@ abstract final class HostSettings {
   static const _kClientId = 'spotify_client_id';
   static const _kDeviceId = 'spotify_device_id';
   static const _kDeviceName = 'spotify_device_name';
+  static const _kLastId = 'spotify_last_device_id';
+  static const _kLastName = 'spotify_last_device_name';
+  static const _kLastRestricted = 'spotify_last_device_restricted';
 
   /// Spotify client id: value entered in the app, else the build-time
   /// `--dart-define=SPOTIFY_CLIENT_ID` default.
@@ -18,12 +21,36 @@ abstract final class HostSettings {
   static String? deviceId;
   static String? deviceName;
 
+  /// The device the party was last heard coming out of, kept so a host that
+  /// has just been updated still knows where the music belongs instead of
+  /// starting afresh on the phone.
+  static String? lastDeviceId;
+  static String? lastDeviceName;
+  static bool lastDeviceRestricted = false;
+
+  static Future<void> rememberDevice(
+    String id,
+    String name,
+    bool restricted,
+  ) async {
+    lastDeviceId = id;
+    lastDeviceName = name;
+    lastDeviceRestricted = restricted;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastId, id);
+    await prefs.setString(_kLastName, name);
+    await prefs.setBool(_kLastRestricted, restricted);
+  }
+
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_kClientId)?.trim();
     if (saved != null && saved.isNotEmpty) clientId = saved;
     deviceId = prefs.getString(_kDeviceId);
     deviceName = prefs.getString(_kDeviceName);
+    lastDeviceId = prefs.getString(_kLastId);
+    lastDeviceName = prefs.getString(_kLastName);
+    lastDeviceRestricted = prefs.getBool(_kLastRestricted) ?? false;
   }
 
   static Future<void> setDevice(String? id, String? name) async {
