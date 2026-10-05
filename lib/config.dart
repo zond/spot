@@ -89,6 +89,11 @@ abstract final class Config {
   static const stateHeartbeat = Duration(seconds: 20);
 
   /// Members ping the host this often while their page is visible…
+  /// How often the host asks the Spotify app how things are going. Cheap
+  /// local call; it keeps the connection exercised and, more usefully, finds
+  /// out that it has died when the Spotify app never said so.
+  static const spotifyPingInterval = Duration(minutes: 2);
+
   static const memberPingInterval = Duration(minutes: 4);
 
   /// …and the host stops pushing to anyone silent for this long.

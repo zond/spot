@@ -45,6 +45,17 @@ already deployed at `europe-west1-fcm-switch.cloudfunctions.net`).
 
 ## Conventions / decisions
 
+- The host asks the Spotify app for its state every
+  `Config.spotifyPingInterval` — a watchdog, not a keepalive: the connection
+  (an App Remote service binding, which Android drops when it reclaims
+  Spotify) can die without the callback firing, and a deaf host misses the
+  end of the song. Reads only; a command there would start on the phone.
+
+- Songs Spotify won't play (`isPlayable` from the public page) stay in the
+  list — positions have to match the playlist's own numbering — and are
+  skipped when choosing. A position that is handed over and never starts goes
+  into `_badPositions` for the rest of the run.
+
 - One way to play a playlist entry, whoever owns it: `_playlistCatalogue`
   reads the whole song list from the *public page* (one source, so the path is
   exercised at every party), falling back to the Web API only for playlists

@@ -6,6 +6,7 @@ class Track {
     required this.artists,
     required this.durationMs,
     this.imageUrl,
+    this.playable = true,
   });
 
   final String id;
@@ -13,6 +14,12 @@ class Track {
   final String artists;
   final int durationMs;
   final String? imageUrl;
+
+  /// False for a song Spotify won't play for this account — removed from the
+  /// catalogue, or not licensed in this country. A playlist keeps them in
+  /// place (they still count towards its length and its positions), so the
+  /// host has to know not to choose them.
+  final bool playable;
 
   String get uri => 'spotify:track:$id';
   String get spotifyUrl => 'https://open.spotify.com/track/$id';

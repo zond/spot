@@ -61,6 +61,7 @@ abstract final class SpotifyPublicPage {
             name: map['title'] as String? ?? '',
             artists: map['subtitle'] as String? ?? '',
             durationMs: (map['duration'] as num?)?.toInt() ?? 0,
+            playable: map['isPlayable'] as bool? ?? true,
           ),
         );
       }

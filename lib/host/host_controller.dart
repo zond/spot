@@ -338,6 +338,8 @@ class HostController extends ChangeNotifier {
     _connSub = null;
     _reclaimTimer?.cancel();
     _reclaimTimer = null;
+    _ping?.cancel();
+    _ping = null;
     takenOver = false;
     takenOverLocally = false;
     takenOverBy = null;
@@ -375,6 +377,11 @@ class HostController extends ChangeNotifier {
     spotifyConnected = true;
     await _stateSub?.cancel();
     await _connSub?.cancel();
+    _ping?.cancel();
+    _ping = Timer.periodic(
+      Config.spotifyPingInterval,
+      (_) => unawaited(_pingSpotify()),
+    );
     _stateSub = player.states.listen(
       _onPlayerState,
       onError: (Object e) {
@@ -875,7 +882,14 @@ class HostController extends ChangeNotifier {
   ) async {
     final tracks = await _playlistCatalogue(pl);
     if (tracks == null || tracks.isEmpty) return null;
+    final bad = _badPositions[pl.id] ?? const <int>{};
+    bool pick(int i) => tracks[i].playable && !bad.contains(i);
     if (!m.shuffle) {
+      // Walk past the songs Spotify won't play rather than handing one over
+      // and waiting out the silence.
+      while (pl.nextIndex < tracks.length && !pick(pl.nextIndex)) {
+        pl.nextIndex++;
+      }
       if (pl.nextIndex >= tracks.length) return null;
       final index = pl.nextIndex++;
       return (
@@ -886,7 +900,7 @@ class HostController extends ChangeNotifier {
     }
     final free = [
       for (var i = 0; i < tracks.length; i++)
-        if (!pl.playedIds.contains('#$i')) i,
+        if (!pl.playedIds.contains('#$i') && pick(i)) i,
     ];
     if (free.isEmpty) return null;
     final index = free[_rng.nextInt(free.length)];
@@ -1038,15 +1052,52 @@ class HostController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Forgets the stored songs of the playlist the current song came from —
-  /// after a failure to start, since a playlist that has shrunk since we read
-  /// it is the likeliest reason a position won't play.
+  /// Positions in a playlist that were handed over and never started, so the
+  /// party doesn't walk into the same silence twice. Kept for this run only;
+  /// a song can be unplayable today and back tomorrow.
+  final Map<String, Set<int>> _badPositions = {};
+
+  /// After a song failed to start: remember the position as one to leave
+  /// alone, and forget the stored songs of that playlist, since a playlist
+  /// that has shrunk since we read it is the other reason a position won't
+  /// play.
   void _forgetPlaylistCopy() {
     final uri = _handoverContextUri;
     if (uri == null) return;
     final id = uri.split(':').last;
+    final index = _handoverIndex;
+    if (index != null) {
+      (_badPositions[id] ??= {}).add(index);
+      _log('item ${index + 1} will be left alone from now on');
+    }
     _publicTracks.remove(id);
     _metaCache.remove(id);
+  }
+
+  Timer? _ping;
+
+  /// Asks the Spotify app how things are going. The connection can be dead
+  /// without anyone having told us — a dropped callback, a frozen app — and
+  /// then the host sits deaf, missing the end of the song. A read is also the
+  /// only safe thing to do here: a command would start playing on the phone.
+  Future<void> _pingSpotify() async {
+    if (phase != HostPhase.running) return;
+    if (!spotifyConnected) {
+      _scheduleReconnect();
+      return;
+    }
+    try {
+      final state = await player.state();
+      if (state == null) throw StateError('no state');
+      // Catches up on anything the event stream failed to deliver, a song
+      // that ended while it was quiet above all.
+      _onPlayerState(state);
+    } catch (e) {
+      _log('the Spotify app did not answer ($e) — reconnecting');
+      spotifyConnected = false;
+      notifyListeners();
+      _scheduleReconnect();
+    }
   }
 
   /// Spotify does not always honour the device a play command names — a
